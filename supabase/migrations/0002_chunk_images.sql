@@ -3,7 +3,11 @@
 
 alter table chunks add column if not exists image_path text;
 
--- Recreate match_chunks to also return the source page's image path.
+-- Recreate match_chunks to also return the source page's image path. Postgres
+-- can't CREATE OR REPLACE a function into a different return row shape, so the
+-- old signature is dropped first (safe to run even if it doesn't exist yet).
+drop function if exists match_chunks(vector, uuid, uuid, uuid, integer);
+
 create or replace function match_chunks (
   query_embedding vector(768),
   match_school_id uuid,
