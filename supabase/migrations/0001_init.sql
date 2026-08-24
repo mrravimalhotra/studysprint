@@ -67,13 +67,13 @@ create table if not exists llm_settings (
 );
 
 insert into llm_settings (task_type, provider, model) values
-  ('ocr_extraction', 'google', 'gemini-2.5-flash'),
-  ('embedding',      'google', 'text-embedding-004'),
-  ('solution',       'google', 'gemini-2.5-pro'),
-  ('notes',          'google', 'gemini-2.5-pro'),
-  ('sample_paper',   'google', 'gemini-2.5-pro'),
-  ('ad_hoc',         'google', 'gemini-2.5-flash'),
-  ('coverage_check', 'google', 'gemini-2.5-flash')
+  ('ocr_extraction', 'google', 'gemini-flash-lite-latest'),
+  ('embedding',      'google', 'gemini-embedding-001'),
+  ('solution',       'google', 'gemini-flash-latest'),
+  ('notes',          'google', 'gemini-flash-latest'),
+  ('sample_paper',   'google', 'gemini-flash-latest'),
+  ('ad_hoc',         'google', 'gemini-flash-lite-latest'),
+  ('coverage_check', 'google', 'gemini-flash-lite-latest')
 on conflict (task_type) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────────
