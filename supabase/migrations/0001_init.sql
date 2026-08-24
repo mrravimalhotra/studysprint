@@ -242,44 +242,64 @@ as $$
 $$;
 
 -- students: a student can read/update their own row; admins can read/update all.
+drop policy if exists students_select_own on students;
 create policy students_select_own on students
   for select using (id = auth.uid() or is_admin());
+drop policy if exists students_update_own on students;
 create policy students_update_own on students
   for update using (id = auth.uid() or is_admin());
+drop policy if exists students_insert_admin on students;
 create policy students_insert_admin on students
   for insert with check (id = auth.uid() or is_admin());
+drop policy if exists students_delete_admin on students;
 create policy students_delete_admin on students
   for delete using (is_admin());
 
 -- taxonomy: readable by any authenticated active student, writable by admins only.
+drop policy if exists schools_select_all on schools;
 create policy schools_select_all on schools for select using (auth.role() = 'authenticated');
+drop policy if exists schools_write_admin on schools;
 create policy schools_write_admin on schools for all using (is_admin()) with check (is_admin());
 
+drop policy if exists grades_select_all on grades;
 create policy grades_select_all on grades for select using (auth.role() = 'authenticated');
+drop policy if exists grades_write_admin on grades;
 create policy grades_write_admin on grades for all using (is_admin()) with check (is_admin());
 
+drop policy if exists subjects_select_all on subjects;
 create policy subjects_select_all on subjects for select using (auth.role() = 'authenticated');
+drop policy if exists subjects_write_admin on subjects;
 create policy subjects_write_admin on subjects for all using (is_admin()) with check (is_admin());
 
 -- llm_settings: readable by authenticated users (needed by server routes), writable by admins only.
+drop policy if exists llm_settings_select_all on llm_settings;
 create policy llm_settings_select_all on llm_settings for select using (auth.role() = 'authenticated');
+drop policy if exists llm_settings_write_admin on llm_settings;
 create policy llm_settings_write_admin on llm_settings for all using (is_admin()) with check (is_admin());
 
 -- documents/chunks: readable by any active student (filtered app-side by taxonomy), writable by admins only.
+drop policy if exists documents_select_all on documents;
 create policy documents_select_all on documents for select using (auth.role() = 'authenticated');
+drop policy if exists documents_write_admin on documents;
 create policy documents_write_admin on documents for all using (is_admin()) with check (is_admin());
 
+drop policy if exists chunks_select_all on chunks;
 create policy chunks_select_all on chunks for select using (auth.role() = 'authenticated');
+drop policy if exists chunks_write_admin on chunks;
 create policy chunks_write_admin on chunks for all using (is_admin()) with check (is_admin());
 
 -- token_usage: a student can read their own usage; admins can read/write all; inserts happen via service role from server routes.
+drop policy if exists token_usage_select_own on token_usage;
 create policy token_usage_select_own on token_usage
   for select using (student_id = auth.uid() or is_admin());
+drop policy if exists token_usage_write_admin on token_usage;
 create policy token_usage_write_admin on token_usage
   for insert with check (is_admin());
 
 -- generated_documents: a student can see and create their own; admins can see all.
+drop policy if exists generated_documents_select_own on generated_documents;
 create policy generated_documents_select_own on generated_documents
   for select using (student_id = auth.uid() or is_admin());
+drop policy if exists generated_documents_insert_own on generated_documents;
 create policy generated_documents_insert_own on generated_documents
   for insert with check (student_id = auth.uid() or is_admin());
