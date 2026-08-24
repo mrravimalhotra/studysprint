@@ -1,0 +1,68 @@
+import { NextResponse } from "next/server";
+import { getCurrentStudent } from "@/lib/auth";
+import { runGeneration } from "@/lib/generation/pipeline";
+import { renderGenerationPdf } from "@/lib/pdf/render";
+import { uploadPdf, getSignedUrl } from "@/lib/storage";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { QuotaExceededError } from "@/lib/quota";
+import type { GenerationTaskType } from "@/types/database";
+
+/** Builds a POST handler for one of the four generation routes — same pipeline, different task type. */
+export function createGenerationRoute(taskType: GenerationTaskType) {
+  return async function POST(request: Request) {
+    const student = await getCurrentStudent();
+    if (!student || !student.active) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await request.json().catch(() => null);
+    const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+    if (!prompt) {
+      return NextResponse.json({ error: "A prompt/topic is required" }, { status: 400 });
+    }
+
+    try {
+      const result = await runGeneration({ student, taskType, prompt });
+
+      const title = prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt;
+      const pdfBuffer = await renderGenerationPdf({
+        taskType,
+        title,
+        studentName: student.full_name ?? student.email,
+        content: result.text,
+        sources: result.sources,
+      });
+
+      const path = `generated/${student.id}/${taskType}-${Date.now()}.pdf`;
+      await uploadPdf(path, pdfBuffer);
+
+      const admin = createAdminClient();
+      const { data: doc, error } = await admin
+        .from("generated_documents")
+        .insert({ student_id: student.id, task_type: taskType, title, storage_path: path })
+        .select()
+        .single();
+      if (error) throw new Error(`Failed to save document record: ${error.message}`);
+
+      const downloadUrl = await getSignedUrl(path);
+
+      return NextResponse.json({
+        id: doc.id,
+        title,
+        text: result.text,
+        sources: result.sources,
+        usedSearchGrounding: result.usedSearchGrounding,
+        downloadUrl,
+      });
+    } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        return NextResponse.json(
+          { error: "Monthly token quota exceeded. Contact an admin to raise your limit.", quota: err.status },
+          { status: 429 }
+        );
+      }
+      const message = err instanceof Error ? err.message : "Generation failed";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  };
+}

@@ -1,0 +1,59 @@
+import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function GET() {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const admin = createAdminClient();
+  const { data: students, error } = await admin
+    .from("students")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Attach current-month usage for each student in one batch.
+  const usageByStudent = new Map<string, number>();
+  await Promise.all(
+    (students ?? []).map(async (s) => {
+      const { data } = await admin.rpc("student_monthly_usage", { p_student_id: s.id });
+      usageByStudent.set(s.id, (data as number) ?? 0);
+    })
+  );
+
+  return NextResponse.json({
+    students: (students ?? []).map((s) => ({ ...s, monthly_usage: usageByStudent.get(s.id) ?? 0 })),
+  });
+}
+
+interface PatchBody {
+  id: string;
+  active?: boolean;
+  role?: "student" | "admin";
+  token_quota?: number;
+  school_id?: string | null;
+  grade_id?: string | null;
+  subject_ids?: string[];
+}
+
+export async function PATCH(request: Request) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as PatchBody | null;
+  if (!body?.id) return NextResponse.json({ error: "id is required" }, { status: 400 });
+
+  const { id, ...updates } = body;
+  const admin = createAdminClient();
+  const { data, error } = await admin.from("students").update(updates).eq("id", id).select().single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ student: data });
+}
