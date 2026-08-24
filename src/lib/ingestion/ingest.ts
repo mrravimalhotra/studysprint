@@ -2,7 +2,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractPageText } from "@/lib/ingestion/extract";
 import { chunkPageText } from "@/lib/ingestion/chunk";
 import { embed } from "@/lib/llm";
+import { uploadSourceFile } from "@/lib/storage";
 import type { DocumentRow } from "@/types/database";
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 
 export interface IngestPage {
   pageNumber: number;
@@ -17,14 +25,16 @@ export interface IngestDocumentInput {
   subjectId: string;
   sourceType: DocumentRow["source_type"];
   uploadedBy: string;
-  storagePath: string | null;
   pages: IngestPage[];
 }
 
 /**
  * Full ingestion pipeline for one uploaded document: vision text extraction per
  * page → chunking → embedding → pgvector insert, tagged with the taxonomy the
- * admin selected at upload time. Runs to completion or marks the document failed.
+ * admin selected at upload time. Every page's image is also persisted and linked
+ * to its chunks — text alone loses diagrams/maps/figures, so retrieval and
+ * generation need the original image, not just its OCR'd caption. Runs to
+ * completion or marks the document failed.
  */
 export async function ingestDocument(input: IngestDocumentInput): Promise<string> {
   const admin = createAdminClient();
@@ -37,7 +47,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
       grade_id: input.gradeId,
       subject_id: input.subjectId,
       source_type: input.sourceType,
-      storage_path: input.storagePath,
+      storage_path: null,
       uploaded_by: input.uploadedBy,
       status: "processing",
     })
@@ -48,6 +58,14 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
 
   try {
     for (const page of input.pages) {
+      const ext = MIME_EXTENSIONS[page.mimeType] ?? "bin";
+      const imagePath = `sources/${document.id}/page-${page.pageNumber}.${ext}`;
+      await uploadSourceFile(imagePath, Buffer.from(page.imageBase64, "base64"), page.mimeType);
+
+      if (page.pageNumber === 1) {
+        await admin.from("documents").update({ storage_path: imagePath }).eq("id", document.id);
+      }
+
       const pageText = await extractPageText(page.imageBase64, page.mimeType);
       const textChunks = chunkPageText(pageText, page.pageNumber);
 
@@ -62,6 +80,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
           page_number: page.pageNumber,
           section_label: chunk.sectionLabel,
           content: chunk.content,
+          image_path: imagePath,
           embedding,
         });
         if (insertError) throw new Error(`Failed to insert chunk: ${insertError.message}`);

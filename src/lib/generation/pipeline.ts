@@ -1,8 +1,9 @@
 import { generateCompletion } from "@/lib/llm";
 import { recordTokenUsage } from "@/lib/llm/usage";
-import { retrieveContext, formatContext } from "@/lib/rag/retrieve";
+import { retrieveContext, formatContext, loadSourceImages } from "@/lib/rag/retrieve";
 import { checkQuota, QuotaExceededError } from "@/lib/quota";
 import { systemInstructionsFor } from "@/lib/generation/prompts";
+import type { CompletionImage } from "@/lib/llm/types";
 import type { GenerationTaskType, MatchedChunk, Student } from "@/types/database";
 
 export interface GenerationInput {
@@ -14,6 +15,8 @@ export interface GenerationInput {
 export interface GenerationOutput {
   text: string;
   sources: MatchedChunk[];
+  /** Source image_path → loaded image, so the PDF renderer can attach the right figure to the right citation. */
+  sourceImages: Map<string, CompletionImage>;
   usedSearchGrounding: boolean;
 }
 
@@ -42,11 +45,14 @@ export async function runGeneration({ student, taskType, prompt }: GenerationInp
     subjectId,
   });
 
+  const { images, byPath: sourceImages } = await loadSourceImages(retrieval.chunks);
+
   const result = await generateCompletion({
     taskType,
     systemInstructions: systemInstructionsFor(taskType),
     prompt,
     context: formatContext(retrieval.chunks),
+    images,
     // Search grounding is opt-in per the RAG-first policy: only fires when
     // coverage from the knowledge base is weak.
     allowSearchGrounding: retrieval.coverageLow,
@@ -63,6 +69,7 @@ export async function runGeneration({ student, taskType, prompt }: GenerationInp
   return {
     text: result.text,
     sources: retrieval.chunks,
+    sourceImages,
     usedSearchGrounding: Boolean(result.usedSearchGrounding),
   };
 }

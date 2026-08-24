@@ -31,6 +31,7 @@ export function createGenerationRoute(taskType: GenerationTaskType) {
         studentName: student.full_name ?? student.email,
         content: result.text,
         sources: result.sources,
+        sourceImages: result.sourceImages,
       });
 
       const path = `generated/${student.id}/${taskType}-${Date.now()}.pdf`;
@@ -46,11 +47,21 @@ export function createGenerationRoute(taskType: GenerationTaskType) {
 
       const downloadUrl = await getSignedUrl(path);
 
+      // Give the on-screen result the same source images the PDF embeds, so a
+      // diagram/map is visible before the student even downloads the PDF.
+      const imagePaths = [...new Set(result.sources.map((s) => s.image_path).filter((p): p is string => Boolean(p)))];
+      const imageUrlEntries = await Promise.all(imagePaths.map(async (p) => [p, await getSignedUrl(p)] as const));
+      const imageUrlByPath = new Map(imageUrlEntries);
+      const sources = result.sources.map((s) => ({
+        ...s,
+        imageUrl: s.image_path ? imageUrlByPath.get(s.image_path) : undefined,
+      }));
+
       return NextResponse.json({
         id: doc.id,
         title,
         text: result.text,
-        sources: result.sources,
+        sources,
         usedSearchGrounding: result.usedSearchGrounding,
         downloadUrl,
       });

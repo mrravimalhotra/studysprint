@@ -77,6 +77,8 @@ export interface ChunkRow {
   section_label: string | null;
   content: string;
   embedding: number[] | null;
+  /** Storage path of the scanned page this chunk was extracted from (diagrams/maps/figures live here, not in `content`). */
+  image_path: string | null;
   created_at: string;
 }
 
@@ -87,6 +89,7 @@ export interface MatchedChunk {
   section_label: string | null;
   page_number: number | null;
   source_type: string;
+  image_path: string | null;
   similarity: number;
 }
 

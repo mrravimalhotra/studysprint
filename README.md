@@ -92,6 +92,24 @@ taxonomy — each page is transcribed via the LLM's native vision input
 indexed into `pgvector`. Students only retrieve chunks matching their own
 school/grade/subject.
 
+Every page's original image is also kept (`chunks.image_path`, uploaded via
+`src/lib/storage.ts`) and linked to its chunks — not just the OCR'd text. This
+matters for anatomy diagrams, maps, and other figures where the text
+transcription alone loses the actual content: when a chunk with an image is
+retrieved, `runGeneration()` (`src/lib/generation/pipeline.ts`) passes that
+image into the LLM call too (so the model can reference it directly, e.g. for
+labeling questions), embeds it in the exported PDF, and shows it inline in the
+student's on-screen result. No admin tagging is required — every uploaded page
+is treated this way automatically. This is also why file storage volume scales
+with pages uploaded, not just text volume — see the Storage note below.
+
+**Storage**: Supabase's free tier caps file storage well under what a handful
+of image-heavy textbooks need. If you outgrow it, swap `src/lib/storage.ts` to
+Cloudflare R2 (10GB free, zero egress fees — relevant here since every
+generation that cites an image re-serves it) while keeping Supabase for
+Auth/Postgres/pgvector. The functions to redirect are `uploadPdf`,
+`uploadSourceFile`, `downloadFile`, and `getSignedUrl`.
+
 ## Deploying
 
 Push to GitHub and import the repo into Vercel. Set the same environment

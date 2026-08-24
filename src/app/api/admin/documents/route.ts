@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ingestDocument } from "@/lib/ingestion/ingest";
-import { uploadSourceFile } from "@/lib/storage";
 
 export const maxDuration = 300; // vision extraction + embedding per page can take a while
 
@@ -49,12 +48,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Store the first page as a representative preview; the rest are consumed for
-    // text extraction only (their pixels aren't needed again after ingestion).
-    const firstPage = body.pages[0];
-    const storagePath = `sources/${admin.id}/${Date.now()}-p1`;
-    await uploadSourceFile(storagePath, Buffer.from(firstPage.imageBase64, "base64"), firstPage.mimeType);
-
     const documentId = await ingestDocument({
       title: body.title,
       schoolId: body.schoolId,
@@ -62,7 +55,6 @@ export async function POST(request: Request) {
       subjectId: body.subjectId,
       sourceType: body.sourceType,
       uploadedBy: admin.id,
-      storagePath,
       pages: body.pages.map((p, i) => ({ pageNumber: i + 1, imageBase64: p.imageBase64, mimeType: p.mimeType })),
     });
 

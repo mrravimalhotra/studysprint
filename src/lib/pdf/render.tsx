@@ -1,4 +1,5 @@
-import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image, StyleSheet, renderToBuffer } from "@react-pdf/renderer";
+import type { CompletionImage } from "@/lib/llm/types";
 import type { GenerationTaskType, MatchedChunk } from "@/types/database";
 
 const styles = StyleSheet.create({
@@ -13,6 +14,8 @@ const styles = StyleSheet.create({
   bulletDot: { width: 12 },
   sourcesTitle: { fontSize: 11, fontFamily: "Helvetica-Bold", marginTop: 18, marginBottom: 6 },
   source: { fontSize: 9, color: "#475569", marginBottom: 3 },
+  sourceBlock: { marginBottom: 8 },
+  sourceImage: { width: 240, marginTop: 4, marginBottom: 2, borderRadius: 2 },
   footer: {
     position: "absolute",
     bottom: 20,
@@ -83,6 +86,8 @@ export interface RenderPdfInput {
   studentName: string;
   content: string;
   sources: MatchedChunk[];
+  /** Source image_path → loaded image, so diagrams/maps a source cites get embedded, not just referenced by name. */
+  sourceImages: Map<string, CompletionImage>;
 }
 
 export async function renderGenerationPdf(input: RenderPdfInput): Promise<Buffer> {
@@ -99,12 +104,21 @@ export async function renderGenerationPdf(input: RenderPdfInput): Promise<Buffer
         {input.sources.length > 0 && (
           <>
             <Text style={styles.sourcesTitle}>Sources</Text>
-            {input.sources.map((s, i) => (
-              <Text key={s.id} style={styles.source}>
-                [{i + 1}] {s.section_label ?? s.source_type}
-                {s.page_number ? `, p.${s.page_number}` : ""}
-              </Text>
-            ))}
+            {input.sources.map((s, i) => {
+              const image = s.image_path ? input.sourceImages.get(s.image_path) : undefined;
+              return (
+                <View key={s.id} style={styles.sourceBlock}>
+                  <Text style={styles.source}>
+                    [{i + 1}] {s.section_label ?? s.source_type}
+                    {s.page_number ? `, p.${s.page_number}` : ""}
+                  </Text>
+                  {image && (
+                    // eslint-disable-next-line jsx-a11y/alt-text -- this is @react-pdf/renderer's Image (no alt concept), not an HTML img
+                    <Image style={styles.sourceImage} src={`data:${image.mimeType};base64,${image.data}`} />
+                  )}
+                </View>
+              );
+            })}
           </>
         )}
 

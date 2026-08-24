@@ -29,3 +29,15 @@ export async function uploadSourceFile(path: string, buffer: Buffer, contentType
   if (error) throw new Error(`Upload failed: ${error.message}`);
   return path;
 }
+
+/**
+ * Downloads a stored file's raw bytes — used to hand a source page's image back
+ * to the LLM as multimodal input (diagrams/maps carry meaning text can't capture).
+ */
+export async function downloadFile(path: string): Promise<{ data: Buffer; contentType: string }> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(BUCKET).download(path);
+  if (error || !data) throw new Error(`Download failed: ${error?.message}`);
+  const buffer = Buffer.from(await data.arrayBuffer());
+  return { data: buffer, contentType: data.type || "application/octet-stream" };
+}

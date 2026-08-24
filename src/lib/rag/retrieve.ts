@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { embed } from "@/lib/llm";
+import { downloadFile } from "@/lib/storage";
+import type { CompletionImage } from "@/lib/llm/types";
 import type { MatchedChunk } from "@/types/database";
 
 export interface RetrievalScope {
@@ -16,6 +18,9 @@ export interface RetrievalResult {
 
 const MATCH_COUNT = 8;
 const COVERAGE_THRESHOLD = 0.55;
+// Caps how many source page images get sent to the model per request — request
+// size/cost scale with image count, and a handful of the top matches is enough.
+const MAX_SOURCE_IMAGES = 4;
 
 /**
  * The reusable RAG retrieval core: embed the query, then run a taxonomy-filtered
@@ -42,6 +47,32 @@ export async function retrieveContext(query: string, scope: RetrievalScope): Pro
   return { chunks, coverageLow: chunks.length === 0 || topSimilarity < COVERAGE_THRESHOLD };
 }
 
+/**
+ * Loads the original scanned page images for the top-matched chunks, so the model
+ * sees diagrams/maps/figures directly instead of relying on their OCR'd text —
+ * capped and deduplicated since several chunks often share one page's image.
+ * Returns both the flat list (for the LLM call) and a path → image lookup (so
+ * the PDF renderer can attach the right image to the right cited source).
+ */
+export async function loadSourceImages(
+  chunks: MatchedChunk[]
+): Promise<{ images: CompletionImage[]; byPath: Map<string, CompletionImage> }> {
+  const uniquePaths = [...new Set(chunks.map((c) => c.image_path).filter((p): p is string => Boolean(p)))].slice(
+    0,
+    MAX_SOURCE_IMAGES
+  );
+
+  const byPath = new Map<string, CompletionImage>();
+  await Promise.all(
+    uniquePaths.map(async (path) => {
+      const { data, contentType } = await downloadFile(path);
+      byPath.set(path, { data: data.toString("base64"), mimeType: contentType });
+    })
+  );
+
+  return { images: [...byPath.values()], byPath };
+}
+
 /** Formats retrieved chunks into a single context block for the completion prompt. */
 export function formatContext(chunks: MatchedChunk[]): string {
   if (chunks.length === 0) return "(No matching material found in the knowledge base.)";
@@ -49,7 +80,8 @@ export function formatContext(chunks: MatchedChunk[]): string {
   return chunks
     .map((c, i) => {
       const loc = [c.section_label, c.page_number ? `p.${c.page_number}` : null].filter(Boolean).join(", ");
-      return `[Source ${i + 1}${loc ? ` — ${loc}` : ""} — ${c.source_type}]\n${c.content}`;
+      const imageNote = c.image_path ? " — the original scanned page image is attached below" : "";
+      return `[Source ${i + 1}${loc ? ` — ${loc}` : ""} — ${c.source_type}${imageNote}]\n${c.content}`;
     })
     .join("\n\n");
 }

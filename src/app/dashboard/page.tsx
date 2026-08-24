@@ -13,7 +13,13 @@ interface GenerationResult {
   text: string;
   usedSearchGrounding: boolean;
   downloadUrl: string;
-  sources: { id: string; section_label: string | null; source_type: string; page_number: number | null }[];
+  sources: {
+    id: string;
+    section_label: string | null;
+    source_type: string;
+    page_number: number | null;
+    imageUrl?: string;
+  }[];
 }
 
 const TABS: { value: GenerationTaskType; label: string; placeholder: string }[] = [
@@ -151,10 +157,25 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
+              <SourceImages sources={result.sources} />
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function SourceImages({ sources }: { sources: GenerationResult["sources"] }) {
+  const uniqueUrls = [...new Set(sources.map((s) => s.imageUrl).filter((u): u is string => Boolean(u)))];
+  if (uniqueUrls.length === 0) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-3">
+      {uniqueUrls.map((url) => (
+        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not worth Next/Image's remote-pattern config
+        <img key={url} src={url} alt="Referenced page" className="h-24 w-auto rounded-md border border-slate-200" />
+      ))}
     </div>
   );
 }
