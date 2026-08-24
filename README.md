@@ -6,16 +6,17 @@ curriculum material, exportable to PDF, with per-student token quotas and a
 provider-agnostic LLM layer (defaults to Google Gemini, swappable to
 Anthropic/OpenAI per task type from the admin panel, no redeploy needed).
 
-Built per the low-cost blueprint: Next.js on Vercel, Supabase
-(Auth + Postgres/pgvector + Storage) as the only paid-at-scale infrastructure,
-and Gemini's native vision for OCR instead of a dedicated OCR vendor.
+Built per the low-cost blueprint: Next.js on Vercel, Supabase for Auth and
+the Postgres/pgvector database, Cloudflare R2 for file storage, and Gemini's
+native vision for OCR instead of a dedicated OCR vendor.
 
 ## Stack
 
 - **Frontend/Backend**: Next.js 16 (App Router), TypeScript, Tailwind CSS — deployed on Vercel
-- **Auth + DB + Storage**: Supabase (Postgres + `pgvector`, bundled Auth, bundled Storage)
+- **Auth + DB**: Supabase (Postgres + `pgvector`, bundled Auth)
+- **File storage**: Cloudflare R2 (S3-compatible, 10GB free, zero egress fees)
 - **LLM**: Google Gemini by default via `src/lib/llm/`, with Anthropic/OpenAI adapters ready to swap in per task type
-- **PDF export**: `@react-pdf/renderer`, rendered server-side, stored in Supabase Storage, delivered via signed URLs
+- **PDF export**: `@react-pdf/renderer`, rendered server-side, stored in R2, delivered via signed URLs
 
 ## Project layout
 
@@ -38,8 +39,8 @@ src/
     pdf/           shared PDF renderer
     supabase/      browser/server/admin Supabase clients + middleware session refresh
     quota.ts       monthly token-quota check
-    storage.ts     Supabase Storage upload + signed URL helpers
-supabase/migrations/0001_init.sql   full schema: tables, RLS policies, match_chunks() / student_monthly_usage() RPCs
+    storage.ts     Cloudflare R2 upload/download + signed URL helpers (S3-compatible SDK)
+supabase/migrations/   schema, RLS policies, match_chunks() / student_monthly_usage() RPCs
 ```
 
 ## Setup
@@ -47,30 +48,37 @@ supabase/migrations/0001_init.sql   full schema: tables, RLS policies, match_chu
 ### 1. Create a Supabase project
 
 1. Create a project at [supabase.com](https://supabase.com) (free tier is enough for a pilot).
-2. In the SQL editor, run `supabase/migrations/0001_init.sql`. This enables `pgvector`,
-   creates every table, the `match_chunks`/`student_monthly_usage` RPCs, and RLS policies.
-3. In Storage, create a bucket named `studysprint` (or set `SUPABASE_STORAGE_BUCKET` to
-   whatever name you choose). Keep it private — all access goes through signed URLs.
-4. In Authentication settings, disable "Confirm email" for faster pilot onboarding, or
+2. In the SQL editor, run `supabase/migrations/0001_init.sql`, then
+   `0002_chunk_images.sql`, in order. This enables `pgvector`, creates every
+   table, the `match_chunks`/`student_monthly_usage` RPCs, and RLS policies.
+3. In Authentication settings, disable "Confirm email" for faster pilot onboarding, or
    configure your SMTP provider if you want email confirmation.
 
-### 2. Configure environment variables
+### 2. Create a Cloudflare R2 bucket
+
+1. Sign up at [Cloudflare](https://dash.cloudflare.com) (no card required for R2's free tier) and open **R2** in the sidebar.
+2. Create a bucket — the name you pick goes in `R2_BUCKET_NAME`. Keep it private; the app never links to it directly, only via time-limited signed URLs.
+3. Go to **Manage API Tokens** → create a token with **Object Read & Write** permission scoped to that bucket. This gives you `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`.
+4. Your `R2_ACCOUNT_ID` is shown on the R2 overview page (also visible in the bucket's S3 API URL: `https://<account-id>.r2.cloudflarestorage.com`).
+
+### 3. Configure environment variables
 
 Copy `.env.example` to `.env.local` and fill in:
 
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Project Settings → API
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — Supabase Project Settings → API
 - `SUPABASE_SERVICE_ROLE_KEY` — same page (**server-only secret, never expose to the client**)
+- `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` — from step 2
 - `GOOGLE_API_KEY` — your existing Google AI Studio / Gemini API key (default runtime provider)
 - `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` — optional, only needed if you switch a task type to that provider from the admin panel
 
-### 3. Install and run
+### 4. Install and run
 
 ```bash
 npm install
 npm run dev
 ```
 
-### 4. Bootstrap the first admin
+### 5. Bootstrap the first admin
 
 Sign up through `/signup` — this creates your account but leaves it inactive
 (`students.active = false`) so a stranger can't self-grant access. For the very
@@ -83,7 +91,7 @@ update students set role = 'admin', active = true where email = 'you@example.com
 After that, use `/admin/students` to grant/revoke access and set quotas for
 everyone else — no more SQL needed.
 
-### 5. Populate the knowledge base
+### 6. Populate the knowledge base
 
 In `/admin/taxonomy`, add at least one school, grade, and subject. Then in
 `/admin/documents`, upload scanned/photographed pages tagged with that
@@ -92,23 +100,17 @@ taxonomy — each page is transcribed via the LLM's native vision input
 indexed into `pgvector`. Students only retrieve chunks matching their own
 school/grade/subject.
 
-Every page's original image is also kept (`chunks.image_path`, uploaded via
-`src/lib/storage.ts`) and linked to its chunks — not just the OCR'd text. This
-matters for anatomy diagrams, maps, and other figures where the text
+Every page's original image is also uploaded to R2 (`chunks.image_path`,
+via `src/lib/storage.ts`) and linked to its chunks — not just the OCR'd text.
+This matters for anatomy diagrams, maps, and other figures where the text
 transcription alone loses the actual content: when a chunk with an image is
 retrieved, `runGeneration()` (`src/lib/generation/pipeline.ts`) passes that
 image into the LLM call too (so the model can reference it directly, e.g. for
 labeling questions), embeds it in the exported PDF, and shows it inline in the
 student's on-screen result. No admin tagging is required — every uploaded page
-is treated this way automatically. This is also why file storage volume scales
-with pages uploaded, not just text volume — see the Storage note below.
-
-**Storage**: Supabase's free tier caps file storage well under what a handful
-of image-heavy textbooks need. If you outgrow it, swap `src/lib/storage.ts` to
-Cloudflare R2 (10GB free, zero egress fees — relevant here since every
-generation that cites an image re-serves it) while keeping Supabase for
-Auth/Postgres/pgvector. The functions to redirect are `uploadPdf`,
-`uploadSourceFile`, `downloadFile`, and `getSignedUrl`.
+is treated this way automatically, which is why file storage volume scales
+with pages uploaded, not just text volume — the reason R2 (10GB free, no
+egress fees) is the storage layer rather than Supabase's smaller free tier.
 
 ## Deploying
 
@@ -128,3 +130,13 @@ routes to the matching adapter (`providers/google.ts`, `anthropic.ts`,
 shape, so quota tracking in `token_usage` works identically regardless of
 which vendor actually served a given request — switching providers for any
 task type is a database write, not a code change or redeploy.
+
+## Notes on storage
+
+`src/lib/storage.ts` is the only file that knows about R2 — it wraps the
+S3-compatible AWS SDK (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`)
+behind four functions (`uploadPdf`, `uploadSourceFile`, `downloadFile`,
+`getSignedUrl`) that the rest of the app calls without knowing which vendor is
+behind them. Supabase still handles Auth and the Postgres/pgvector database —
+only file storage moved, since that's the piece whose volume scales with
+pages uploaded rather than with student count.
