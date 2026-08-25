@@ -10,6 +10,10 @@ Built per the low-cost blueprint: Next.js on Vercel, Supabase for Auth and
 the Postgres/pgvector database, Cloudflare R2 for file storage, and Gemini's
 native vision for OCR instead of a dedicated OCR vendor.
 
+For a component-by-component walkthrough with diagrams and a full file-by-file
+reference, see [`docs/architecture.html`](docs/architecture.html) (open it in
+a browser).
+
 ## Stack
 
 - **Frontend/Backend**: Next.js 16 (App Router), TypeScript, Tailwind CSS — deployed on Vercel

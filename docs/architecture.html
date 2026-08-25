@@ -1,0 +1,957 @@
+<title>StudySprint Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --ink: #16202c;
+    --paper: #f1f3f0;
+    --paper-raised: #e7ebe7;
+    --line: #c3cbc8;
+    --line-soft: #d7ddd4;
+    --accent: #2f5d8a;
+    --accent-strong: #1f4569;
+    --accent-soft: #dce6ed;
+    --muted: #5b6663;
+    --amber: #8a5a22;
+    --amber-soft: #ece2d2;
+    --code-bg: #e6e9e4;
+    --font-display: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+    --font-body: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e7ece9;
+      --paper: #121818;
+      --paper-raised: #182020;
+      --line: #333d3b;
+      --line-soft: #262f2d;
+      --accent: #7aabd9;
+      --accent-strong: #9cc3e8;
+      --accent-soft: #1e2e3a;
+      --muted: #92a09b;
+      --amber: #d3a563;
+      --amber-soft: #2c2418;
+      --code-bg: #1b2321;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #e7ece9;
+    --paper: #121818;
+    --paper-raised: #182020;
+    --line: #333d3b;
+    --line-soft: #262f2d;
+    --accent: #7aabd9;
+    --accent-strong: #9cc3e8;
+    --accent-soft: #1e2e3a;
+    --muted: #92a09b;
+    --amber: #d3a563;
+    --amber-soft: #2c2418;
+    --code-bg: #1b2321;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--accent-strong); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  code, .mono {
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+  }
+
+  code {
+    background: var(--code-bg);
+    padding: 0.1em 0.4em;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 32px;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 760px);
+    gap: 64px;
+    align-items: start;
+  }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 32px 40px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .masthead .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+    margin: 0 0 14px;
+  }
+
+  .masthead h1 {
+    font-size: clamp(2rem, 4vw, 2.7rem);
+    line-height: 1.1;
+    margin: 0 0 14px;
+    max-width: 760px;
+  }
+
+  .masthead p.dek {
+    font-size: 1.1rem;
+    color: var(--muted);
+    max-width: 640px;
+    margin: 0 0 22px;
+  }
+
+  .stack-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .stack-tags span {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+
+  /* ---------- nav rail ---------- */
+
+  nav.rail {
+    position: sticky;
+    top: 32px;
+    padding-top: 48px;
+    font-size: 0.9rem;
+  }
+
+  nav.rail .rail-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+
+  nav.rail ol {
+    list-style: none;
+    margin: 0 0 28px;
+    padding: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  nav.rail li { margin: 0; }
+
+  nav.rail a {
+    display: block;
+    padding: 6px 0 6px 14px;
+    color: var(--muted);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    margin-left: -1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  nav.rail a:hover { color: var(--ink); }
+
+  nav.rail a.active {
+    color: var(--accent-strong);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* ---------- main column ---------- */
+
+  main { padding-top: 48px; min-width: 0; }
+
+  section { margin-bottom: 64px; scroll-margin-top: 24px; }
+
+  section > .num {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--accent-strong);
+    letter-spacing: 0.06em;
+  }
+
+  section h2 {
+    font-size: 1.55rem;
+    margin: 4px 0 6px;
+  }
+
+  section .role {
+    color: var(--muted);
+    font-size: 0.98rem;
+    margin: 0 0 20px;
+    max-width: 62ch;
+  }
+
+  section p { max-width: 66ch; margin: 0 0 14px; }
+
+  section ul, section ol.steps {
+    max-width: 64ch;
+    padding-left: 1.3em;
+    margin: 0 0 16px;
+  }
+
+  section ul li, section ol.steps li { margin-bottom: 6px; }
+
+  .files {
+    margin-top: 18px;
+    padding: 14px 18px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    font-size: 0.88rem;
+  }
+
+  .files .files-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .files ul { margin: 0; padding-left: 1.1em; max-width: none; }
+  .files li { margin-bottom: 4px; }
+
+  .callout {
+    border-left: 3px solid var(--amber);
+    background: var(--amber-soft);
+    padding: 12px 16px;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+    max-width: 62ch;
+    margin: 16px 0;
+  }
+
+  .callout strong { color: var(--amber); }
+
+  /* ---------- diagrams ---------- */
+
+  figure.diagram {
+    margin: 24px 0 20px;
+    padding: 18px 18px 14px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-soft);
+    border-radius: 8px;
+  }
+
+  figure.diagram svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    color: var(--ink);
+  }
+
+  figure.diagram figcaption {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .diagram-scroll { overflow-x: auto; }
+
+  /* ---------- tables ---------- */
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line-soft);
+    border-radius: 6px;
+    margin-bottom: 12px;
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.88rem;
+    min-width: 480px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+  }
+
+  thead th {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--paper-raised);
+  }
+
+  tbody tr:last-child td { border-bottom: none; }
+
+  td.path { white-space: nowrap; color: var(--accent-strong); }
+
+  .dir-heading {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 26px 0 8px;
+  }
+
+  footer.colophon {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 32px 32px 64px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.86rem;
+  }
+
+  @media (max-width: 880px) {
+    .shell { grid-template-columns: 1fr; gap: 24px; }
+    nav.rail { position: static; padding-top: 0; }
+    nav.rail ol { columns: 2; }
+    main { padding-top: 12px; }
+  }
+</style>
+
+<header class="masthead">
+  <p class="eyebrow">System design reference</p>
+  <h1>How StudySprint fits together</h1>
+  <p class="dek">
+    A component-by-component walk through the RAG pipeline, the LLM abstraction layer, and
+    the admin/student surfaces built on top of them — plus a file-by-file map of what each
+    script is responsible for.
+  </p>
+  <div class="stack-tags">
+    <span>Next.js 16 · App Router</span>
+    <span>Supabase — Auth / Postgres+pgvector</span>
+    <span>Cloudflare R2 — file storage</span>
+    <span>Google Gemini (default) · Anthropic · OpenAI</span>
+    <span>@react-pdf/renderer</span>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="rail" aria-label="Section index">
+    <p class="rail-title">Components</p>
+    <ol id="toc">
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#data-layer">1. Data layer</a></li>
+      <li><a href="#auth">2. Auth &amp; access</a></li>
+      <li><a href="#llm-layer">3. LLM abstraction</a></li>
+      <li><a href="#ingestion">4. Ingestion</a></li>
+      <li><a href="#retrieval">5. RAG retrieval</a></li>
+      <li><a href="#generation">6. Generation</a></li>
+      <li><a href="#quota">7. Quota</a></li>
+      <li><a href="#pdf">8. PDF export</a></li>
+      <li><a href="#admin">9. Admin panel</a></li>
+      <li><a href="#student">10. Student dashboard</a></li>
+      <li><a href="#files">File reference</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="overview">
+      <p class="num">00</p>
+      <h2>Overview</h2>
+      <p class="role">
+        Two people use this system: an <strong>admin</strong>, who uploads a school's curriculum
+        material and manages access, and a <strong>student</strong>, who asks for solutions, notes,
+        sample papers, or ad-hoc answers grounded in that material. Everything both of them do
+        passes through the same three layers.
+      </p>
+
+      <figure class="diagram">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 800 340" role="img" aria-label="Browser sends requests to Next.js, which talks to Supabase for Auth and Postgres with pgvector, to Cloudflare R2 for file storage, and to the LLM abstraction layer, which routes to Google, Anthropic, or OpenAI.">
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+              </marker>
+            </defs>
+
+            <!-- Browser -->
+            <rect x="24" y="150" width="150" height="60" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="99" y="176" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600">Browser</text>
+            <text x="99" y="192" text-anchor="middle" font-family="IBM Plex Sans" font-size="10.5" fill="currentColor" opacity="0.65">student / admin</text>
+
+            <!-- Next.js -->
+            <rect x="250" y="140" width="190" height="80" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="345" y="172" text-anchor="middle" font-family="IBM Plex Sans" font-size="12.5" font-weight="600">Next.js</text>
+            <text x="345" y="188" text-anchor="middle" font-family="IBM Plex Mono" font-size="10" fill="currentColor" opacity="0.7">proxy.ts + app/api/*</text>
+            <text x="345" y="203" text-anchor="middle" font-family="IBM Plex Sans" font-size="10" fill="currentColor" opacity="0.55">server components + routes</text>
+
+            <!-- Supabase cluster: Auth + DB only — file storage moved to R2 below -->
+            <rect x="520" y="30" width="250" height="190" rx="8" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5" stroke-dasharray="3 4"/>
+            <text x="536" y="50" font-family="IBM Plex Mono" font-size="10.5" letter-spacing="0.05em" fill="currentColor" opacity="0.65">SUPABASE</text>
+
+            <rect x="544" y="62" width="200" height="52" rx="5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <text x="644" y="93" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600">Auth</text>
+
+            <rect x="544" y="132" width="200" height="76" rx="5" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+            <text x="644" y="163" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600" fill="var(--accent)">Postgres + pgvector</text>
+            <text x="644" y="178" text-anchor="middle" font-family="IBM Plex Sans" font-size="10" fill="currentColor" opacity="0.6">relational store + vector store</text>
+
+            <!-- Cloudflare R2 — a peer service to Supabase, not part of it -->
+            <rect x="520" y="248" width="250" height="68" rx="8" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <text x="645" y="277" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600">Cloudflare R2</text>
+            <text x="645" y="293" text-anchor="middle" font-family="IBM Plex Sans" font-size="10" fill="currentColor" opacity="0.6">file storage — scanned pages + PDFs</text>
+
+            <!-- LLM providers -->
+            <rect x="250" y="280" width="190" height="56" rx="6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+            <text x="345" y="303" text-anchor="middle" font-family="IBM Plex Sans" font-size="12" font-weight="600">LLM providers</text>
+            <text x="345" y="319" text-anchor="middle" font-family="IBM Plex Sans" font-size="10" fill="currentColor" opacity="0.6">Google (default) · Anthropic · OpenAI</text>
+
+            <!-- arrows -->
+            <line x1="174" y1="180" x2="246" y2="180" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow)"/>
+            <text x="210" y="171" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="currentColor" opacity="0.7">HTTPS</text>
+
+            <polyline points="440,160 500,160 500,88 540,88" fill="none" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow)"/>
+            <text x="500" y="150" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="currentColor" opacity="0.7">session cookie</text>
+
+            <polyline points="440,180 500,180 500,170 540,170" fill="none" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#arrow)"/>
+            <text x="500" y="197" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="var(--accent)">match_chunks()</text>
+
+            <polyline points="440,200 500,200 500,282 516,282" fill="none" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow)"/>
+            <text x="500" y="305" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="currentColor" opacity="0.7">upload / signed URL</text>
+
+            <line x1="345" y1="220" x2="345" y2="276" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow)"/>
+            <text x="410" y="252" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="currentColor" opacity="0.7">generateCompletion()</text>
+          </svg>
+        </div>
+        <figcaption>
+          One request path: Supabase for auth and the database, Cloudflare R2 for files, one
+          abstraction layer for the LLM. The database (highlighted) is the only piece doing
+          double duty — relational data and the RAG vector store share one Postgres instance.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="data-layer">
+      <p class="num">01</p>
+      <h2>Data layer — Postgres + pgvector</h2>
+      <p class="role">One Supabase Postgres database, playing two roles at once.</p>
+
+      <p>
+        Rather than a separate vector database, the RAG corpus lives in the same Postgres
+        instance as everything else, using the <code>pgvector</code> extension. <code>chunks.embedding</code>
+        is a <code>vector(768)</code> column, filled by Gemini's <code>gemini-embedding-001</code> truncated
+        to 768 dimensions via its <code>outputDimensionality</code> parameter, searched with an IVFFlat
+        cosine-similarity index.
+      </p>
+      <ul>
+        <li><code>schools</code> / <code>grades</code> / <code>subjects</code> — the taxonomy every student and every document is tagged against.</li>
+        <li><code>students</code> — one row per Supabase Auth user: role, <code>active</code> flag, school/grade/subject assignment, <code>token_quota</code>.</li>
+        <li><code>llm_settings</code> — admin-editable provider + model per task type.</li>
+        <li><code>documents</code> / <code>chunks</code> — the RAG corpus. Each chunk carries its taxonomy tags, its text, its embedding, and <code>image_path</code> — the storage path of the scanned page it came from.</li>
+        <li><code>token_usage</code> — one row per LLM call, normalized regardless of provider.</li>
+        <li><code>generated_documents</code> — a record of every PDF a student has generated.</li>
+      </ul>
+      <p>
+        Two RPCs do the work application code shouldn't reimplement: <code>match_chunks()</code> runs
+        a taxonomy-filtered cosine search, and <code>student_monthly_usage()</code> sums a student's
+        <code>token_usage</code> for the current calendar month. Row-Level Security enforces the
+        boundaries directly in Postgres — a student can only see their own profile and usage;
+        the knowledge base and taxonomy are readable by any active student but writable only
+        by admins, via an <code>is_admin()</code> helper function.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>supabase/migrations/0001_init.sql</code> — full schema, RPCs, RLS policies.</li>
+          <li><code>supabase/migrations/0002_chunk_images.sql</code> — adds <code>chunks.image_path</code> and updates <code>match_chunks()</code>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="auth">
+      <p class="num">02</p>
+      <h2>Authentication &amp; access control</h2>
+      <p class="role">Supabase Auth for credentials, a <code>students</code> row for everything app-specific.</p>
+
+      <p>
+        Sign-up creates the Supabase Auth user and an app-level <code>students</code> row in the same
+        step — but the row starts <code>active: false</code>. Nobody can self-grant access; an admin
+        has to flip the switch at <code>/admin/students</code> first.
+      </p>
+      <p>
+        <code>src/proxy.ts</code> (Next.js 16 renamed <code>middleware.ts</code> to <code>proxy.ts</code>) runs on
+        every request and enforces three gates in order: no session → <code>/login</code>; session but
+        inactive → <code>/pending</code>; active non-admin hitting <code>/admin/*</code> → <code>/dashboard</code>. The
+        actual gate logic lives in <code>lib/supabase/middleware.ts</code> so it can also refresh the
+        session cookie on the way through.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/proxy.ts</code> — entry point Next.js invokes on every request.</li>
+          <li><code>src/lib/supabase/middleware.ts</code> — session refresh + the three redirect rules.</li>
+          <li><code>src/lib/actions/auth.ts</code> — <code>signIn</code> / <code>signUp</code> / <code>signOut</code> server actions.</li>
+          <li><code>src/lib/auth.ts</code> — <code>getCurrentStudent()</code> / <code>requireAdmin()</code>, used by every server component and API route that needs to know who's asking.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="llm-layer">
+      <p class="num">03</p>
+      <h2>LLM abstraction layer</h2>
+      <p class="role">One function the rest of the app calls; the provider behind it is a database row.</p>
+
+      <p>
+        Every generation call — student-facing or ingestion-time — goes through
+        <code>generateCompletion()</code> in <code>src/lib/llm/index.ts</code>. It never talks to a vendor SDK
+        directly: it looks up which provider + model handles this <code>taskType</code> from the
+        <code>llm_settings</code> table, then hands off to that provider's adapter.
+      </p>
+      <p>
+        Three adapters — <code>providers/google.ts</code>, <code>anthropic.ts</code>, <code>openai.ts</code> — each wrap
+        one vendor's SDK behind the same interface, and each normalizes its response into an
+        identical shape: <code>{'{'} text, usage: {'{'}inputTokens, outputTokens, totalTokens{'}'} {'}'}</code>. That
+        normalization is what lets the quota system (section 7) work the same way no matter
+        which vendor actually served a request.
+      </p>
+      <p>
+        Google is the default and does double duty: it's the primary completion provider
+        <em>and</em> the only embeddings provider — <code>embed()</code> always calls the Google adapter,
+        since Anthropic has no embeddings API and the <code>pgvector</code> column's dimensionality is
+        fixed to Gemini's embedding model.
+      </p>
+
+      <div class="callout">
+        <strong>Config, not code.</strong> Changing which provider/model serves <code>solution</code>
+        generation is a row update in <code>llm_settings</code> via <code>/admin/llm-settings</code> — no
+        redeploy, and every downstream system (quota, PDF export) keeps working unchanged.
+      </div>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/llm/index.ts</code> — <code>generateCompletion()</code> / <code>embed()</code>, the entry point.</li>
+          <li><code>src/lib/llm/config.ts</code> — reads <code>llm_settings</code>, 30s in-process cache.</li>
+          <li><code>src/lib/llm/types.ts</code> — the shared request/response shapes every adapter implements.</li>
+          <li><code>src/lib/llm/providers/google.ts</code> — Gemini adapter (completions + embeddings + search grounding).</li>
+          <li><code>src/lib/llm/providers/anthropic.ts</code> — Claude adapter (completions only).</li>
+          <li><code>src/lib/llm/providers/openai.ts</code> — OpenAI-compatible adapter (completions + embeddings).</li>
+          <li><code>src/lib/llm/usage.ts</code> — writes a <code>token_usage</code> row after every call.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="ingestion">
+      <p class="num">04</p>
+      <h2>Ingestion pipeline</h2>
+      <p class="role">Admin uploads scanned pages; the pipeline turns them into searchable, taggable knowledge.</p>
+
+      <p>
+        An admin uploads a chapter's worth of scanned/photographed pages at <code>/admin/documents</code>,
+        tagged once with school, grade, subject, and source type — there's no per-page manual
+        work. <code>ingestDocument()</code> then does four things to every page, in order:
+      </p>
+      <ol class="steps">
+        <li><strong>Store the image.</strong> The raw page is uploaded to <code>sources/{'{'}documentId{'}'}/page-{'{'}n{'}'}</code>, before anything else happens to it.</li>
+        <li><strong>Transcribe it.</strong> <code>extractPageText()</code> sends the page to Gemini's vision input directly — no dedicated OCR vendor.</li>
+        <li><strong>Chunk it.</strong> <code>chunkPageText()</code> splits the transcription on heading/section boundaries, capped around 1,500 characters per chunk.</li>
+        <li><strong>Embed and index it.</strong> Each chunk is embedded and inserted into <code>chunks</code>, carrying the page's taxonomy tags <em>and</em> its <code>image_path</code> — linking the text back to the page it came from.</li>
+      </ol>
+      <p>
+        That last link is deliberate: OCR text alone loses an anatomy diagram or a map — it
+        can describe what's on the page, not show it. By keeping every page's image and
+        linking it to the chunks extracted from it, retrieval can hand the original image back
+        alongside the text, automatically, for any subject — see section 5.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/ingestion/ingest.ts</code> — orchestrates the four steps above per page.</li>
+          <li><code>src/lib/ingestion/extract.ts</code> — the vision transcription call.</li>
+          <li><code>src/lib/ingestion/chunk.ts</code> — section-aware text chunker.</li>
+          <li><code>src/app/api/admin/documents/route.ts</code> — upload endpoint; <code>GET</code> lists documents and their status.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="retrieval">
+      <p class="num">05</p>
+      <h2>RAG retrieval core</h2>
+      <p class="role">One retrieval function, reused by all four generation workflows.</p>
+
+      <p>
+        <code>retrieveContext(query, scope)</code> embeds the incoming prompt, then calls the
+        <code>match_chunks</code> RPC — a taxonomy-filtered cosine search scoped to the student's own
+        school, grade, and subject, returning the top 8 matches. If the best match's similarity
+        falls below a threshold (or there are no matches at all), the result is flagged
+        <code>coverageLow</code> — the one signal allowed to unlock web search grounding, which keeps
+        the "RAG first, search only if needed" policy enforced in code rather than just in the
+        prompt.
+      </p>
+      <p>
+        <code>loadSourceImages(chunks)</code> takes the matched chunks, de-duplicates their
+        <code>image_path</code>s (several chunks often share one page), caps the result at four
+        images, and downloads them — for two consumers at once: the LLM call itself, and the
+        PDF/UI layer that cites them later.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/rag/retrieve.ts</code> — <code>retrieveContext()</code>, <code>loadSourceImages()</code>, <code>formatContext()</code>.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="generation">
+      <p class="num">06</p>
+      <h2>Generation pipeline</h2>
+      <p class="role">Four routes, one shared spine — they differ only in task type.</p>
+
+      <p>
+        Solutions, notes, sample papers, and ad-hoc answers are four thin route files that all
+        call the same <code>runGeneration()</code> function with a different <code>taskType</code>. That
+        function is the whole pipeline end to end:
+      </p>
+
+      <figure class="diagram">
+        <div class="diagram-scroll">
+          <svg viewBox="0 0 900 190" role="img" aria-label="Sequence: prompt received, quota check, retrieve context and images, LLM call, record usage and render PDF, respond with download link.">
+            <defs>
+              <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+              </marker>
+            </defs>
+
+            <!-- nodes: centers at x = 75,225,375,525,675,825 ; rect w=140 h=54 top y=63 -->
+            <g font-family="IBM Plex Sans">
+              <rect x="10" y="63" width="130" height="54" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              <text x="75" y="86" text-anchor="middle" font-size="11.5" font-weight="600">Prompt</text>
+              <text x="75" y="101" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.6">received</text>
+
+              <rect x="160" y="63" width="130" height="54" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              <text x="225" y="86" text-anchor="middle" font-size="11.5" font-weight="600">Quota check</text>
+              <text x="225" y="101" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="currentColor" opacity="0.65">checkQuota()</text>
+
+              <rect x="310" y="63" width="130" height="54" rx="6" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+              <text x="375" y="86" text-anchor="middle" font-size="11.5" font-weight="600" fill="var(--accent)">Retrieve</text>
+              <text x="375" y="101" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="var(--accent)">context + images</text>
+
+              <rect x="460" y="63" width="130" height="54" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              <text x="525" y="86" text-anchor="middle" font-size="11.5" font-weight="600">LLM call</text>
+              <text x="525" y="101" text-anchor="middle" font-family="IBM Plex Mono" font-size="8.5" fill="currentColor" opacity="0.65">generateCompletion()</text>
+
+              <rect x="610" y="63" width="150" height="54" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              <text x="685" y="82" text-anchor="middle" font-size="11.5" font-weight="600">Record + export</text>
+              <text x="685" y="97" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="currentColor" opacity="0.65">recordTokenUsage()</text>
+              <text x="685" y="108" text-anchor="middle" font-family="IBM Plex Mono" font-size="8" fill="currentColor" opacity="0.65">renderGenerationPdf()</text>
+
+              <rect x="775" y="63" width="118" height="54" rx="6" fill="none" stroke="currentColor" stroke-width="1.3"/>
+              <text x="834" y="86" text-anchor="middle" font-size="11.5" font-weight="600">Respond</text>
+              <text x="834" y="101" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.6">text + PDF link</text>
+            </g>
+
+            <g stroke="currentColor" stroke-width="1.2">
+              <line x1="140" y1="90" x2="156" y2="90" marker-end="url(#arrow2)"/>
+              <line x1="290" y1="90" x2="306" y2="90" marker-end="url(#arrow2)"/>
+              <line x1="440" y1="90" x2="456" y2="90" marker-end="url(#arrow2)"/>
+              <line x1="590" y1="90" x2="606" y2="90" marker-end="url(#arrow2)"/>
+              <line x1="760" y1="90" x2="771" y2="90" marker-end="url(#arrow2)"/>
+            </g>
+
+            <text x="450" y="150" text-anchor="middle" font-family="IBM Plex Mono" font-size="9.5" fill="currentColor" opacity="0.55">
+              runGeneration() — src/lib/generation/pipeline.ts
+            </text>
+          </svg>
+        </div>
+        <figcaption>
+          The shared pipeline behind all four generation routes. Only the task type — and
+          therefore the system prompt and, via <code>llm_settings</code>, the model — changes between
+          <code>/api/generate/solution</code>, <code>notes</code>, <code>sample-paper</code>, and <code>ad-hoc</code>.
+        </figcaption>
+      </figure>
+
+      <p>
+        <code>src/lib/generation/handler.ts</code> wraps that pipeline into a single POST-handler
+        factory; each route file is one line calling it with its task type. The route also owns
+        what the pipeline doesn't: rendering the PDF, uploading it, inserting a
+        <code>generated_documents</code> row, and minting a signed download URL for the response.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/generation/pipeline.ts</code> — <code>runGeneration()</code>, the sequence above.</li>
+          <li><code>src/lib/generation/prompts.ts</code> — the RAG-first system instructions, one per task type.</li>
+          <li><code>src/lib/generation/handler.ts</code> — shared route factory: PDF render, upload, respond.</li>
+          <li><code>src/app/api/generate/{'{'}solution,notes,sample-paper,ad-hoc{'}'}/route.ts</code> — four one-line routes.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="quota">
+      <p class="num">07</p>
+      <h2>Quota enforcement</h2>
+      <p class="role">A per-student monthly token ceiling, checked before every generation call.</p>
+
+      <p>
+        <code>checkQuota(studentId)</code> sums the student's current-month usage via the
+        <code>student_monthly_usage</code> RPC and compares it against <code>students.token_quota</code>.
+        <code>runGeneration()</code> calls this first, before spending anything on retrieval or an LLM
+        call — a student over quota gets turned away at the door, not after the expensive part
+        has already run.
+      </p>
+      <p>
+        Being over quota throws a typed <code>QuotaExceededError</code> that the route handler catches
+        and turns into an HTTP 429 carrying the actual usage numbers, so the client can render
+        "247k / 250k tokens used" rather than a generic failure. Usage itself is written after
+        every completion call, using the normalized <code>{'{'}inputTokens, outputTokens, totalTokens{'}'}</code>
+        object every LLM adapter returns — the quota system doesn't know or care which vendor
+        served the request.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/quota.ts</code> — <code>checkQuota()</code>, <code>QuotaExceededError</code>.</li>
+          <li><code>src/lib/llm/usage.ts</code> — writes the <code>token_usage</code> row.</li>
+          <li><code>src/app/api/me/route.ts</code> — profile + live quota status, polled by the dashboard's usage bar.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="pdf">
+      <p class="num">08</p>
+      <h2>PDF export</h2>
+      <p class="role">One renderer, shared by all four generation types, serving only signed URLs.</p>
+
+      <p>
+        <code>renderGenerationPdf()</code> is a single <code>@react-pdf/renderer</code> template with a light
+        markdown-ish formatter — headings, bullets, <code>**bold**</code> — and a per-task-type label
+        in the header. Every generation route calls the same function; nothing about the PDF
+        layout is duplicated per task type.
+      </p>
+      <p>
+        Where a cited source has an <code>image_path</code>, the PDF embeds that image inline next to
+        its citation — a diagram survives all the way from the scanned page to the exported
+        PDF, not just the on-screen answer. The finished file is uploaded to Cloudflare R2 and
+        never served directly: <code>getSignedUrl()</code> mints a one-hour link, so the storage bucket
+        itself stays private — and R2's zero egress fees matter here specifically, since a
+        popular generated PDF gets re-downloaded, not just stored once.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/lib/pdf/render.tsx</code> — the shared template + inline image embedding.</li>
+          <li><code>src/lib/storage.ts</code> — <code>uploadPdf</code>, <code>uploadSourceFile</code>, <code>downloadFile</code>, <code>getSignedUrl</code>.</li>
+          <li><code>src/app/api/documents/[id]/download/route.ts</code> — re-signs a URL after the original expires.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="admin">
+      <p class="num">09</p>
+      <h2>Admin panel</h2>
+      <p class="role">Four working areas, each a thin page over a matching API route.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Does</th><th>Route</th></tr></thead>
+          <tbody>
+            <tr><td>Students</td><td>Grant/revoke access, set role, school/grade/subject, quota</td><td class="path"><code>/api/admin/students</code></td></tr>
+            <tr><td>Taxonomy</td><td>Add schools, grades, subjects</td><td class="path"><code>/api/admin/taxonomy</code></td></tr>
+            <tr><td>Knowledge base</td><td>Upload scanned pages → triggers ingestion</td><td class="path"><code>/api/admin/documents</code></td></tr>
+            <tr><td>LLM settings</td><td>Provider + model per task type</td><td class="path"><code>/api/admin/llm-settings</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Every admin route calls <code>requireAdmin()</code> before touching the service-role client —
+        RLS is the backstop in Postgres, not the only gate; the route itself refuses a
+        non-admin before a query is ever issued.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/app/admin/layout.tsx</code> — admin nav shell, calls <code>requireAdmin()</code>.</li>
+          <li><code>src/app/admin/students/page.tsx</code>, <code>taxonomy/page.tsx</code>, <code>documents/page.tsx</code>, <code>llm-settings/page.tsx</code> — one page per area above.</li>
+          <li><code>src/lib/supabase/admin.ts</code> — the service-role client every admin route uses.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="student">
+      <p class="num">10</p>
+      <h2>Student dashboard</h2>
+      <p class="role">Generate, see the answer and its sources, download the PDF, revisit past ones.</p>
+
+      <p>
+        <code>/dashboard</code> is a four-tab form — one per generation type — over a live quota bar.
+        A result shows the answer text, the cited sources (with their images inline, where the
+        source chunk carried one), and a PDF download link. <code>/dashboard/documents</code> lists
+        everything the student has generated before, re-signing a fresh download URL on demand
+        since the original one expires after an hour.
+      </p>
+
+      <div class="files">
+        <p class="files-label">Files</p>
+        <ul>
+          <li><code>src/app/dashboard/page.tsx</code> — the generation form + result view.</li>
+          <li><code>src/app/dashboard/documents/page.tsx</code> — generation history.</li>
+          <li><code>src/app/api/documents/route.ts</code> — lists the current student's own generated documents.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="files">
+      <p class="num">—</p>
+      <h2>Full file reference</h2>
+      <p class="role">Every script, grouped by directory, one line each.</p>
+
+      <p class="dir-heading">src/lib/llm/ — the abstraction layer</p>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td class="path"><code>index.ts</code></td><td>Entry point: <code>generateCompletion()</code>, <code>embed()</code>.</td></tr>
+            <tr><td class="path"><code>config.ts</code></td><td>Reads provider/model per task type from <code>llm_settings</code>, cached 30s.</td></tr>
+            <tr><td class="path"><code>types.ts</code></td><td>Shared request/response shapes every adapter implements.</td></tr>
+            <tr><td class="path"><code>usage.ts</code></td><td>Writes a <code>token_usage</code> row after a call.</td></tr>
+            <tr><td class="path"><code>providers/google.ts</code></td><td>Gemini adapter — completions, embeddings, search grounding.</td></tr>
+            <tr><td class="path"><code>providers/anthropic.ts</code></td><td>Claude adapter — completions only.</td></tr>
+            <tr><td class="path"><code>providers/openai.ts</code></td><td>OpenAI-compatible adapter — completions + embeddings.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="dir-heading">src/lib/rag/, ingestion/, generation/, pdf/</p>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td class="path"><code>rag/retrieve.ts</code></td><td><code>retrieveContext()</code>, <code>loadSourceImages()</code>, <code>formatContext()</code>.</td></tr>
+            <tr><td class="path"><code>ingestion/extract.ts</code></td><td>Vision transcription of one scanned page.</td></tr>
+            <tr><td class="path"><code>ingestion/chunk.ts</code></td><td>Section-aware text chunker.</td></tr>
+            <tr><td class="path"><code>ingestion/ingest.ts</code></td><td>Orchestrates store → transcribe → chunk → embed per page.</td></tr>
+            <tr><td class="path"><code>generation/pipeline.ts</code></td><td><code>runGeneration()</code> — quota → retrieve → generate → record.</td></tr>
+            <tr><td class="path"><code>generation/prompts.ts</code></td><td>RAG-first system instructions, one per task type.</td></tr>
+            <tr><td class="path"><code>generation/handler.ts</code></td><td>Shared POST-handler factory for the four generation routes.</td></tr>
+            <tr><td class="path"><code>pdf/render.tsx</code></td><td>Shared PDF template + inline source-image embedding.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="dir-heading">src/lib/supabase/, and top-level lib/</p>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td class="path"><code>supabase/client.ts</code></td><td>Browser Supabase client.</td></tr>
+            <tr><td class="path"><code>supabase/server.ts</code></td><td>Server-component client, scoped by the caller's RLS session.</td></tr>
+            <tr><td class="path"><code>supabase/admin.ts</code></td><td>Service-role client — bypasses RLS, server-only.</td></tr>
+            <tr><td class="path"><code>supabase/middleware.ts</code></td><td>Session refresh + the three auth redirect rules.</td></tr>
+            <tr><td class="path"><code>auth.ts</code></td><td><code>getCurrentStudent()</code>, <code>requireAdmin()</code>.</td></tr>
+            <tr><td class="path"><code>quota.ts</code></td><td><code>checkQuota()</code>, <code>QuotaExceededError</code>.</td></tr>
+            <tr><td class="path"><code>storage.ts</code></td><td>Upload / download / sign helpers for Cloudflare R2 (S3-compatible SDK).</td></tr>
+            <tr><td class="path"><code>actions/auth.ts</code></td><td><code>signIn</code> / <code>signUp</code> / <code>signOut</code> server actions.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="dir-heading">src/app/api/ — routes</p>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td class="path"><code>generate/{'{'}solution,notes,sample-paper,ad-hoc{'}'}/</code></td><td>Four generation endpoints, one line each over <code>handler.ts</code>.</td></tr>
+            <tr><td class="path"><code>admin/students/</code></td><td>List + patch students (grant/revoke, quota, taxonomy assignment).</td></tr>
+            <tr><td class="path"><code>admin/taxonomy/</code></td><td>List + create schools/grades/subjects.</td></tr>
+            <tr><td class="path"><code>admin/documents/</code></td><td>List documents; upload triggers ingestion.</td></tr>
+            <tr><td class="path"><code>admin/llm-settings/</code></td><td>List + patch provider/model per task type.</td></tr>
+            <tr><td class="path"><code>documents/</code></td><td>Current student's own generated-document history.</td></tr>
+            <tr><td class="path"><code>documents/[id]/download/</code></td><td>Re-signs a download URL for one past document.</td></tr>
+            <tr><td class="path"><code>me/</code></td><td>Current student's profile + live quota status.</td></tr>
+            <tr><td class="path"><code>auth/callback/</code></td><td>Handles Supabase's OAuth/magic-link redirect.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="dir-heading">src/app/ — pages, src/types/, supabase/migrations/</p>
+      <div class="table-wrap">
+        <table>
+          <tbody>
+            <tr><td class="path"><code>login/</code>, <code>signup/</code>, <code>pending/</code></td><td>Unauthenticated / awaiting-approval screens.</td></tr>
+            <tr><td class="path"><code>dashboard/</code></td><td>Student generation UI + document history.</td></tr>
+            <tr><td class="path"><code>admin/</code></td><td>Admin panel — students, taxonomy, knowledge base, LLM settings.</td></tr>
+            <tr><td class="path"><code>proxy.ts</code></td><td>Next.js request entry point (session refresh + route gating).</td></tr>
+            <tr><td class="path"><code>types/database.ts</code></td><td>Shared row/type definitions mirroring the schema.</td></tr>
+            <tr><td class="path"><code>supabase/migrations/0001_init.sql</code></td><td>Full schema, RPCs, RLS policies.</td></tr>
+            <tr><td class="path"><code>supabase/migrations/0002_chunk_images.sql</code></td><td>Adds <code>chunks.image_path</code>, updates <code>match_chunks()</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer class="colophon">
+  StudySprint — system design reference, generated alongside the codebase it describes.
+</footer>
+
+<script>
+  try {
+    const links = Array.from(document.querySelectorAll('#toc a'));
+    const targets = links
+      .map((a) => document.querySelector(a.getAttribute('href')))
+      .filter(Boolean);
+
+    const setActive = (id) => {
+      links.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+    };
+
+    if ('IntersectionObserver' in window && targets.length) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (visible.length) {
+            visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+            setActive(visible[0].target.id);
+          }
+        },
+        { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
+      );
+      targets.forEach((t) => observer.observe(t));
+    }
+  } catch (e) {
+    /* progressive enhancement only */
+  }
+</script>
