@@ -1,4 +1,5 @@
 import { signIn } from "@/lib/actions/auth";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export default async function LoginPage({
   searchParams,
@@ -36,18 +37,7 @@ export default async function LoginPage({
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              required
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-            />
-          </div>
+          <PasswordInput name="password" label="Password" autoComplete="current-password" required />
           <button
             type="submit"
             className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"

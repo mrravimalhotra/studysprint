@@ -22,7 +22,12 @@ export async function signIn(formData: FormData) {
 export async function signUp(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
   const fullName = String(formData.get("full_name") ?? "");
+
+  if (password !== confirmPassword) {
+    redirect(`/signup?error=${encodeURIComponent("Passwords do not match")}`);
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({ email, password });
