@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Grade, School, Subject } from "@/types/database";
 import { pdfToPageImages } from "@/lib/pdf-to-images";
+import { downscaleImageFile } from "@/lib/downscale-image";
 
 type SourceType = "textbook" | "exercise" | "past_paper" | "notes";
 
@@ -33,18 +34,6 @@ interface DocumentRowView {
   schools: { name: string } | null;
   grades: { name: string } | null;
   subjects: { name: string } | null;
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(",")[1] ?? "");
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 export default function DocumentsPage() {
@@ -104,10 +93,11 @@ export default function DocumentsPage() {
             })
           );
         } else {
+          const downscaled = await downscaleImageFile(file);
           newPages.push({
             id: `${file.name}-${Date.now()}`,
-            imageBase64: await fileToBase64(file),
-            mimeType: file.type || "image/jpeg",
+            imageBase64: downscaled.imageBase64,
+            mimeType: downscaled.mimeType,
             sourceType: defaultSourceType,
             origin: file.name,
           });

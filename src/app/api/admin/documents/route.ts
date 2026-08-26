@@ -66,7 +66,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as UploadBody | null;
+  let body: UploadBody | null;
+  try {
+    body = (await request.json()) as UploadBody;
+  } catch (err) {
+    // A parse failure here almost always means the payload was too large or the
+    // connection was cut mid-upload — surface that instead of a misleading
+    // "missing fields" message that hides the real cause.
+    const message = err instanceof Error ? err.message : "unknown error";
+    return NextResponse.json(
+      { error: `Could not read the upload — it may be too large. (${message})` },
+      { status: 400 }
+    );
+  }
+
   if (!body?.title || !body.schoolId || !body.gradeId || !body.subjectId || !body.pages?.length) {
     return NextResponse.json({ error: "title, schoolId, gradeId, subjectId, and pages are required" }, { status: 400 });
   }

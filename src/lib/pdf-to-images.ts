@@ -10,7 +10,11 @@ import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 // (re-copy it if pdfjs-dist is ever upgraded).
 pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-const RENDER_SCALE = 2; // higher = crisper text for OCR, at a larger payload
+// A 30-page batch's payload scales directly with this — 1.5x is ample for OCR
+// legibility without ballooning the upload (2x nearly doubled real-world
+// payloads on multi-page, full-color scanned textbooks).
+const RENDER_SCALE = 1.5;
+const JPEG_QUALITY = 0.82;
 
 export interface RasterizedPage {
   imageBase64: string;
@@ -37,7 +41,7 @@ export async function pdfToPageImages(file: File): Promise<RasterizedPage[]> {
 
     await page.render({ canvas, viewport }).promise;
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
     pages.push({ imageBase64: dataUrl.split(",")[1] ?? "", mimeType: "image/jpeg" });
   }
 
