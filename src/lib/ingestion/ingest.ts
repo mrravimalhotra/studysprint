@@ -51,40 +51,59 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
 
   let documentId = input.documentId;
   if (!documentId) {
-    const { data: document, error: docError } = await admin
-      .from("documents")
-      .insert({
-        title: input.title,
-        school_id: input.schoolId,
-        grade_id: input.gradeId,
-        subject_id: input.subjectId,
-        source_type: input.sourceType,
-        storage_path: null,
-        uploaded_by: input.uploadedBy,
-        status: "processing",
-      })
-      .select()
-      .single();
+    try {
+      const { data: document, error: docError } = await admin
+        .from("documents")
+        .insert({
+          title: input.title,
+          school_id: input.schoolId,
+          grade_id: input.gradeId,
+          subject_id: input.subjectId,
+          source_type: input.sourceType,
+          storage_path: null,
+          uploaded_by: input.uploadedBy,
+          status: "processing",
+        })
+        .select()
+        .single();
 
-    if (docError || !document) throw new Error(`Failed to create document: ${docError?.message}`);
-    documentId = document.id as string;
+      if (docError || !document) throw new Error(docError?.message ?? "no document row returned");
+      documentId = document.id as string;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`Creating document row: ${message}`);
+    }
   }
+
+  // Each step is labeled with which page/stage it failed at — an ingestion
+  // error can originate from three very different systems (R2, Gemini,
+  // Supabase), and an unlabeled error is nearly impossible to place.
+  const stage = (label: string, pageNumber: number, err: unknown): never => {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Page ${pageNumber} (${label}): ${message}`);
+  };
 
   try {
     for (const page of input.pages) {
       const ext = MIME_EXTENSIONS[page.mimeType] ?? "bin";
       const imagePath = `sources/${documentId}/page-${page.pageNumber}.${ext}`;
-      await uploadSourceFile(imagePath, Buffer.from(page.imageBase64, "base64"), page.mimeType);
+
+      await uploadSourceFile(imagePath, Buffer.from(page.imageBase64, "base64"), page.mimeType).catch((err) =>
+        stage("uploading image to R2", page.pageNumber, err)
+      );
 
       if (page.pageNumber === 1 && !input.documentId) {
-        await admin.from("documents").update({ storage_path: imagePath }).eq("id", documentId);
+        const { error } = await admin.from("documents").update({ storage_path: imagePath }).eq("id", documentId);
+        if (error) stage("saving preview path", page.pageNumber, error);
       }
 
-      const pageText = await extractPageText(page.imageBase64, page.mimeType);
+      const pageText = await extractPageText(page.imageBase64, page.mimeType).catch((err) =>
+        stage("vision text extraction", page.pageNumber, err)
+      );
       const textChunks = chunkPageText(pageText, page.pageNumber);
 
       for (const chunk of textChunks) {
-        const { embedding } = await embed(chunk.content);
+        const { embedding } = await embed(chunk.content).catch((err) => stage("embedding", page.pageNumber, err));
         const { error: insertError } = await admin.from("chunks").insert({
           document_id: documentId,
           school_id: input.schoolId,
@@ -97,7 +116,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
           image_path: imagePath,
           embedding,
         });
-        if (insertError) throw new Error(`Failed to insert chunk: ${insertError.message}`);
+        if (insertError) stage("saving chunk to database", page.pageNumber, insertError);
       }
     }
 
