@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored pdfjs-dist worker — a minified build artifact, not source we own.
+    "public/pdf.worker.min.mjs",
   ]),
 ]);
 

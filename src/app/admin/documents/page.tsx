@@ -2,6 +2,27 @@
 
 import { useEffect, useState } from "react";
 import type { Grade, School, Subject } from "@/types/database";
+import { pdfToPageImages } from "@/lib/pdf-to-images";
+
+type SourceType = "textbook" | "exercise" | "past_paper" | "notes";
+
+const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string }[] = [
+  { value: "textbook", label: "Textbook" },
+  { value: "exercise", label: "Exercise" },
+  { value: "past_paper", label: "Past paper" },
+  { value: "notes", label: "Notes" },
+];
+
+const MAX_PAGES = 30;
+
+interface PendingPage {
+  id: string;
+  imageBase64: string;
+  mimeType: string;
+  sourceType: SourceType;
+  /** Original file name, shown so pages from a multi-page PDF are still traceable to their source. */
+  origin: string;
+}
 
 interface DocumentRowView {
   id: string;
@@ -37,8 +58,9 @@ export default function DocumentsPage() {
   const [schoolId, setSchoolId] = useState("");
   const [gradeId, setGradeId] = useState("");
   const [subjectId, setSubjectId] = useState("");
-  const [sourceType, setSourceType] = useState<"textbook" | "exercise" | "past_paper" | "notes">("textbook");
-  const [files, setFiles] = useState<File[]>([]);
+  const [defaultSourceType, setDefaultSourceType] = useState<SourceType>("textbook");
+  const [pages, setPages] = useState<PendingPage[]>([]);
+  const [processingFiles, setProcessingFiles] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -63,30 +85,90 @@ export default function DocumentsPage() {
     load();
   }, []);
 
+  async function addFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    setError(null);
+    setProcessingFiles(true);
+    try {
+      const newPages: PendingPage[] = [];
+      for (const file of Array.from(fileList)) {
+        if (file.type === "application/pdf") {
+          const rasterized = await pdfToPageImages(file);
+          rasterized.forEach((p, i) =>
+            newPages.push({
+              id: `${file.name}-${i}-${Date.now()}`,
+              imageBase64: p.imageBase64,
+              mimeType: p.mimeType,
+              sourceType: defaultSourceType,
+              origin: rasterized.length > 1 ? `${file.name} (p.${i + 1})` : file.name,
+            })
+          );
+        } else {
+          newPages.push({
+            id: `${file.name}-${Date.now()}`,
+            imageBase64: await fileToBase64(file),
+            mimeType: file.type || "image/jpeg",
+            sourceType: defaultSourceType,
+            origin: file.name,
+          });
+        }
+      }
+
+      setPages((prev) => {
+        const combined = [...prev, ...newPages];
+        if (combined.length > MAX_PAGES) {
+          setError(`Up to ${MAX_PAGES} pages per upload — ${combined.length} selected, extra pages were dropped.`);
+          return combined.slice(0, MAX_PAGES);
+        }
+        return combined;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to read one of the selected files");
+    } finally {
+      setProcessingFiles(false);
+    }
+  }
+
+  function removePage(id: string) {
+    setPages((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function setPageSourceType(id: string, sourceType: SourceType) {
+    setPages((prev) => prev.map((p) => (p.id === id ? { ...p, sourceType } : p)));
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (!title.trim() || !schoolId || !gradeId || !subjectId || files.length === 0) {
-      setError("Title, school, grade, subject, and at least one page image are required");
+    if (!title.trim() || !schoolId || !gradeId || !subjectId || pages.length === 0) {
+      setError("Title, school, grade, subject, and at least one page are required");
       return;
     }
 
     setSubmitting(true);
     try {
-      const pages = await Promise.all(
-        files.map(async (f) => ({ imageBase64: await fileToBase64(f), mimeType: f.type || "image/jpeg" }))
-      );
       const res = await fetch("/api/admin/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), schoolId, gradeId, subjectId, sourceType, pages }),
+        body: JSON.stringify({
+          title: title.trim(),
+          schoolId,
+          gradeId,
+          subjectId,
+          pages: pages.map(({ imageBase64, mimeType, sourceType }) => ({ imageBase64, mimeType, sourceType })),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setSuccess(`Uploaded and indexed "${title}" (${pages.length} page${pages.length > 1 ? "s" : ""}).`);
+      const groupCount = new Set(pages.map((p) => p.sourceType)).size;
+      setSuccess(
+        `Uploaded and indexed "${title}" (${pages.length} page${pages.length > 1 ? "s" : ""}` +
+          (groupCount > 1 ? `, split into ${groupCount} documents by type` : "") +
+          `).`
+      );
       setTitle("");
-      setFiles([]);
+      setPages([]);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -102,9 +184,9 @@ export default function DocumentsPage() {
       <div>
         <h1 className="text-lg font-semibold text-slate-900">Knowledge Base</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Upload scanned/photographed pages. Each is read directly via the LLM&apos;s vision
-          input (no separate OCR bill), chunked, embedded, and indexed into pgvector — tagged
-          by school, grade, and subject so retrieval stays scoped correctly.
+          Upload scanned/photographed pages, or a PDF. Each page is read directly via the
+          LLM&apos;s vision input (no separate OCR bill), chunked, embedded, and indexed into
+          pgvector — tagged by school, grade, and subject so retrieval stays scoped correctly.
         </p>
       </div>
 
@@ -175,34 +257,90 @@ export default function DocumentsPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-500">Source type</label>
+            <label className="text-xs font-medium text-slate-500">Default type for new pages</label>
             <select
-              value={sourceType}
-              onChange={(e) => setSourceType(e.target.value as typeof sourceType)}
+              value={defaultSourceType}
+              onChange={(e) => setDefaultSourceType(e.target.value as SourceType)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
             >
-              <option value="textbook">Textbook</option>
-              <option value="exercise">Exercise</option>
-              <option value="past_paper">Past paper</option>
-              <option value="notes">Notes</option>
+              {SOURCE_TYPE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-medium text-slate-500">Page images (JPG/PNG, up to 30)</label>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="mt-1 block w-full text-sm"
-          />
-          {files.length > 0 && <p className="mt-1 text-xs text-slate-500">{files.length} page(s) selected</p>}
+          <label className="text-xs font-medium text-slate-500">Pages</label>
+          <div className="mt-1 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center">
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              multiple
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+              disabled={processingFiles}
+              className="block w-full cursor-pointer text-sm text-slate-600 file:mr-4 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-700"
+            />
+            <p className="mt-2 text-xs text-slate-400">
+              JPG, PNG, or PDF (each page rasterized automatically) — up to {MAX_PAGES} pages total
+            </p>
+            {processingFiles && <p className="mt-2 text-xs text-slate-500">Processing pages...</p>}
+          </div>
+
+          {pages.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-500">
+                {pages.length} page{pages.length > 1 ? "s" : ""} — set the type per page if a batch mixes
+                content (e.g. a chapter followed by its exercises); mixed types are uploaded as separate
+                documents automatically.
+              </p>
+              <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                {pages.map((p, i) => (
+                  <li key={p.id} className="rounded-md border border-slate-200 bg-white p-2">
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local data-URI preview, not a remote image */}
+                      <img
+                        src={`data:${p.mimeType};base64,${p.imageBase64}`}
+                        alt={`Page ${i + 1}`}
+                        className="h-24 w-full rounded object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePage(p.id)}
+                        aria-label={`Remove page ${i + 1}`}
+                        className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900/70 text-xs text-white hover:bg-slate-900"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <p className="mt-1 truncate text-[10px] text-slate-400" title={p.origin}>
+                      {p.origin}
+                    </p>
+                    <select
+                      value={p.sourceType}
+                      onChange={(e) => setPageSourceType(p.id, e.target.value as SourceType)}
+                      className="mt-1 block w-full rounded border border-slate-200 px-1 py-0.5 text-[11px]"
+                    >
+                      {SOURCE_TYPE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <button
-          disabled={submitting}
+          disabled={submitting || processingFiles}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {submitting ? "Uploading & indexing..." : "Upload & index"}
