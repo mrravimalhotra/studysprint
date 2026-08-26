@@ -16,6 +16,11 @@ const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string }[] = [
 
 const MAX_PAGES = 30;
 
+// A single request carrying this much base64 text stays comfortably under the
+// ~10MB ceiling we've observed some local Windows dev setups silently
+// truncate large POST bodies at (surfaces as "Unterminated string in JSON").
+const MAX_BATCH_BASE64_CHARS = 5 * 1024 * 1024;
+
 interface PendingPage {
   id: string;
   imageBase64: string;
@@ -36,6 +41,38 @@ interface DocumentRowView {
   subjects: { name: string } | null;
 }
 
+/** Splits pages into contiguous runs of the same source type, preserving scan order. */
+function groupByContiguousSourceType(pageList: PendingPage[]): PendingPage[][] {
+  const groups: PendingPage[][] = [];
+  for (const page of pageList) {
+    const last = groups[groups.length - 1];
+    if (last && last[0].sourceType === page.sourceType) {
+      last.push(page);
+    } else {
+      groups.push([page]);
+    }
+  }
+  return groups;
+}
+
+/** Splits pages into batches that each stay under a base64-size budget, so one request never gets too large to send reliably. */
+function chunkBySize(pageList: PendingPage[], maxChars: number): PendingPage[][] {
+  const batches: PendingPage[][] = [];
+  let current: PendingPage[] = [];
+  let currentChars = 0;
+  for (const page of pageList) {
+    if (current.length > 0 && currentChars + page.imageBase64.length > maxChars) {
+      batches.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(page);
+    currentChars += page.imageBase64.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 export default function DocumentsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
@@ -51,6 +88,7 @@ export default function DocumentsPage() {
   const [pages, setPages] = useState<PendingPage[]>([]);
   const [processingFiles, setProcessingFiles] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -137,24 +175,57 @@ export default function DocumentsPage() {
     }
 
     setSubmitting(true);
+    setUploadProgress(null);
     try {
-      const res = await fetch("/api/admin/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          schoolId,
-          gradeId,
-          subjectId,
-          pages: pages.map(({ imageBase64, mimeType, sourceType }) => ({ imageBase64, mimeType, sourceType })),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      const groupCount = new Set(pages.map((p) => p.sourceType)).size;
+      // Split into contiguous same-type runs (mixed content → separate documents),
+      // then split each run further by cumulative payload size — a single request
+      // carrying a whole 20-30 page batch as base64 can get silently truncated
+      // well under any size we'd choose to warn about, so every batch stays under
+      // a conservative cap and batches for one document upload sequentially,
+      // threading the same documentId through so they land in one document.
+      const groups = groupByContiguousSourceType(pages);
+      const documentIds: string[] = [];
+      const typeLabel = (t: SourceType) => SOURCE_TYPE_OPTIONS.find((o) => o.value === t)?.label ?? t;
+
+      for (const group of groups) {
+        const batches = chunkBySize(group, MAX_BATCH_BASE64_CHARS);
+        let documentId: string | undefined;
+        let pageOffset = 1;
+
+        for (let i = 0; i < batches.length; i++) {
+          if (groups.length > 1 || batches.length > 1) {
+            setUploadProgress(
+              `Uploading ${typeLabel(group[0].sourceType)} pages${batches.length > 1 ? ` (batch ${i + 1}/${batches.length})` : ""}...`
+            );
+          }
+
+          const res = await fetch("/api/admin/documents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: title.trim(),
+              schoolId,
+              gradeId,
+              subjectId,
+              sourceType: group[0].sourceType,
+              pages: batches[i].map(({ imageBase64, mimeType }) => ({ imageBase64, mimeType })),
+              documentId,
+              startPageNumber: pageOffset,
+              finalize: i === batches.length - 1,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          documentId = data.documentId;
+          pageOffset += batches[i].length;
+        }
+
+        documentIds.push(documentId!);
+      }
+
       setSuccess(
         `Uploaded and indexed "${title}" (${pages.length} page${pages.length > 1 ? "s" : ""}` +
-          (groupCount > 1 ? `, split into ${groupCount} documents by type` : "") +
+          (documentIds.length > 1 ? `, split into ${documentIds.length} documents by type` : "") +
           `).`
       );
       setTitle("");
@@ -164,6 +235,7 @@ export default function DocumentsPage() {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -329,12 +401,15 @@ export default function DocumentsPage() {
           )}
         </div>
 
-        <button
-          disabled={submitting || processingFiles}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {submitting ? "Uploading & indexing..." : "Upload & index"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            disabled={submitting || processingFiles}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {submitting ? "Uploading & indexing..." : "Upload & index"}
+          </button>
+          {uploadProgress && <p className="text-xs text-slate-500">{uploadProgress}</p>}
+        </div>
       </form>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">

@@ -26,6 +26,15 @@ export interface IngestDocumentInput {
   sourceType: DocumentRow["source_type"];
   uploadedBy: string;
   pages: IngestPage[];
+  /**
+   * Append these pages to an already-created document instead of creating a
+   * new one — used when a large upload is split into several requests to stay
+   * under a single request's practical body-size ceiling. Omit for the first
+   * (or only) batch of a document.
+   */
+  documentId?: string;
+  /** Mark the document "ready" once this call's pages are ingested. Defaults to true — set false on every batch except the last when splitting one document across multiple calls. */
+  finalize?: boolean;
 }
 
 /**
@@ -34,36 +43,41 @@ export interface IngestDocumentInput {
  * admin selected at upload time. Every page's image is also persisted and linked
  * to its chunks — text alone loses diagrams/maps/figures, so retrieval and
  * generation need the original image, not just its OCR'd caption. Runs to
- * completion or marks the document failed.
+ * completion (or through this batch, when `documentId`/`finalize` are used to
+ * span multiple calls) or marks the document failed.
  */
 export async function ingestDocument(input: IngestDocumentInput): Promise<string> {
   const admin = createAdminClient();
 
-  const { data: document, error: docError } = await admin
-    .from("documents")
-    .insert({
-      title: input.title,
-      school_id: input.schoolId,
-      grade_id: input.gradeId,
-      subject_id: input.subjectId,
-      source_type: input.sourceType,
-      storage_path: null,
-      uploaded_by: input.uploadedBy,
-      status: "processing",
-    })
-    .select()
-    .single();
+  let documentId = input.documentId;
+  if (!documentId) {
+    const { data: document, error: docError } = await admin
+      .from("documents")
+      .insert({
+        title: input.title,
+        school_id: input.schoolId,
+        grade_id: input.gradeId,
+        subject_id: input.subjectId,
+        source_type: input.sourceType,
+        storage_path: null,
+        uploaded_by: input.uploadedBy,
+        status: "processing",
+      })
+      .select()
+      .single();
 
-  if (docError || !document) throw new Error(`Failed to create document: ${docError?.message}`);
+    if (docError || !document) throw new Error(`Failed to create document: ${docError?.message}`);
+    documentId = document.id as string;
+  }
 
   try {
     for (const page of input.pages) {
       const ext = MIME_EXTENSIONS[page.mimeType] ?? "bin";
-      const imagePath = `sources/${document.id}/page-${page.pageNumber}.${ext}`;
+      const imagePath = `sources/${documentId}/page-${page.pageNumber}.${ext}`;
       await uploadSourceFile(imagePath, Buffer.from(page.imageBase64, "base64"), page.mimeType);
 
-      if (page.pageNumber === 1) {
-        await admin.from("documents").update({ storage_path: imagePath }).eq("id", document.id);
+      if (page.pageNumber === 1 && !input.documentId) {
+        await admin.from("documents").update({ storage_path: imagePath }).eq("id", documentId);
       }
 
       const pageText = await extractPageText(page.imageBase64, page.mimeType);
@@ -72,7 +86,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
       for (const chunk of textChunks) {
         const { embedding } = await embed(chunk.content);
         const { error: insertError } = await admin.from("chunks").insert({
-          document_id: document.id,
+          document_id: documentId,
           school_id: input.schoolId,
           grade_id: input.gradeId,
           subject_id: input.subjectId,
@@ -87,11 +101,13 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<string
       }
     }
 
-    await admin.from("documents").update({ status: "ready" }).eq("id", document.id);
+    if (input.finalize !== false) {
+      await admin.from("documents").update({ status: "ready" }).eq("id", documentId);
+    }
   } catch (err) {
-    await admin.from("documents").update({ status: "failed" }).eq("id", document.id);
+    await admin.from("documents").update({ status: "failed" }).eq("id", documentId);
     throw err;
   }
 
-  return document.id as string;
+  return documentId;
 }

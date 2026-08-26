@@ -23,39 +23,19 @@ export async function GET() {
   return NextResponse.json({ documents: data });
 }
 
-const SOURCE_TYPE_LABELS: Record<DocumentRow["source_type"], string> = {
-  textbook: "Textbook",
-  exercise: "Exercise",
-  past_paper: "Past paper",
-  notes: "Notes",
-};
-
-interface UploadPage {
-  imageBase64: string;
-  mimeType: string;
-  sourceType: DocumentRow["source_type"];
-}
-
 interface UploadBody {
   title: string;
   schoolId: string;
   gradeId: string;
   subjectId: string;
-  pages: UploadPage[];
-}
-
-/** Splits pages into contiguous runs of the same source type, preserving scan order. */
-function groupByContiguousSourceType(pages: UploadPage[]): UploadPage[][] {
-  const groups: UploadPage[][] = [];
-  for (const page of pages) {
-    const last = groups[groups.length - 1];
-    if (last && last[0].sourceType === page.sourceType) {
-      last.push(page);
-    } else {
-      groups.push([page]);
-    }
-  }
-  return groups;
+  sourceType: DocumentRow["source_type"];
+  pages: { imageBase64: string; mimeType: string }[];
+  /** Present from the 2nd request onward when a large upload is split into batches — appends to that document instead of creating a new one. */
+  documentId?: string;
+  /** Page numbering offset for this batch within its document. Defaults to 1. */
+  startPageNumber?: number;
+  /** Whether this batch is the last one for its document (marks it "ready"). Defaults to true — the caller sets false on every batch except the final one when splitting uploads. */
+  finalize?: boolean;
 }
 
 export async function POST(request: Request) {
@@ -80,37 +60,34 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!body?.title || !body.schoolId || !body.gradeId || !body.subjectId || !body.pages?.length) {
-    return NextResponse.json({ error: "title, schoolId, gradeId, subjectId, and pages are required" }, { status: 400 });
+  if (!body?.title || !body.schoolId || !body.gradeId || !body.subjectId || !body.sourceType || !body.pages?.length) {
+    return NextResponse.json(
+      { error: "title, schoolId, gradeId, subjectId, sourceType, and pages are required" },
+      { status: 400 }
+    );
   }
   if (body.pages.length > 30) {
     return NextResponse.json({ error: "Upload at most 30 pages per document" }, { status: 400 });
   }
 
-  // A single scan often mixes content types (e.g. a chapter followed by its
-  // exercises) — group contiguous same-type pages and ingest each run as its
-  // own document, rather than forcing one source_type across the whole batch.
-  const groups = groupByContiguousSourceType(body.pages);
-
   try {
-    const documentIds = await Promise.all(
-      groups.map((pages, i) => {
-        const title = groups.length > 1 ? `${body.title} — ${SOURCE_TYPE_LABELS[pages[0].sourceType]}` : body.title;
-        return ingestDocument({
-          title,
-          schoolId: body.schoolId,
-          gradeId: body.gradeId,
-          subjectId: body.subjectId,
-          sourceType: pages[0].sourceType,
-          uploadedBy: admin.id,
-          pages: pages.map((p, j) => ({ pageNumber: j + 1, imageBase64: p.imageBase64, mimeType: p.mimeType })),
-        }).catch((err) => {
-          throw new Error(`Group ${i + 1} (${SOURCE_TYPE_LABELS[pages[0].sourceType]}): ${err instanceof Error ? err.message : "ingestion failed"}`);
-        });
-      })
-    );
+    const documentId = await ingestDocument({
+      title: body.title,
+      schoolId: body.schoolId,
+      gradeId: body.gradeId,
+      subjectId: body.subjectId,
+      sourceType: body.sourceType,
+      uploadedBy: admin.id,
+      documentId: body.documentId,
+      finalize: body.finalize,
+      pages: body.pages.map((p, i) => ({
+        pageNumber: (body.startPageNumber ?? 1) + i,
+        imageBase64: p.imageBase64,
+        mimeType: p.mimeType,
+      })),
+    });
 
-    return NextResponse.json({ documentIds, status: "ready" });
+    return NextResponse.json({ documentId, status: body.finalize === false ? "processing" : "ready" });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ingestion failed";
     return NextResponse.json({ error: message }, { status: 500 });
