@@ -21,8 +21,15 @@ export function createGenerationRoute(taskType: GenerationTaskType) {
       return NextResponse.json({ error: "A prompt/topic is required" }, { status: 400 });
     }
 
+    // Admin-only: query a specific school/grade/subject instead of the caller's
+    // own profile — validated (and rejected for non-admins) inside runGeneration.
+    const scopeOverride =
+      typeof body?.schoolId === "string" && typeof body?.gradeId === "string" && typeof body?.subjectId === "string"
+        ? { schoolId: body.schoolId, gradeId: body.gradeId, subjectId: body.subjectId }
+        : undefined;
+
     try {
-      const result = await runGeneration({ student, taskType, prompt });
+      const result = await runGeneration({ student, taskType, prompt, scopeOverride });
 
       const title = prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt;
       const pdfBuffer = await renderGenerationPdf({

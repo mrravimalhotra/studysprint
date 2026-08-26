@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { GenerationTaskType, Student } from "@/types/database";
+import type { Grade, GenerationTaskType, School, Student, Subject } from "@/types/database";
 
 interface MeResponse {
   student: Student;
@@ -44,10 +44,35 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerationResult | null>(null);
 
+  // Admin-only: an admin manages many schools and isn't pinned to one
+  // school/grade/subject the way a student's own profile is — they pick the
+  // scope to query per generation instead.
+  const [schools, setSchools] = useState<School[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [scopeSchoolId, setScopeSchoolId] = useState("");
+  const [scopeGradeId, setScopeGradeId] = useState("");
+  const [scopeSubjectId, setScopeSubjectId] = useState("");
+
+  const isAdmin = me?.student.role === "admin";
+
   async function loadMe() {
     const res = await fetch("/api/me");
     const data = await res.json();
     if (res.ok) setMe(data);
+
+    if (res.ok && data.student.role === "admin") {
+      const taxRes = await fetch("/api/admin/taxonomy");
+      const tax = await taxRes.json();
+      if (taxRes.ok) {
+        setSchools(tax.schools);
+        setGrades(tax.grades);
+        setSubjects(tax.subjects);
+        setScopeSchoolId((prev) => prev || data.student.school_id || tax.schools[0]?.id || "");
+        setScopeGradeId((prev) => prev || data.student.grade_id || "");
+        setScopeSubjectId((prev) => prev || data.student.subject_ids[0] || "");
+      }
+    }
   }
 
   useEffect(() => {
@@ -63,10 +88,13 @@ export default function DashboardPage() {
     setResult(null);
 
     try {
+      const scopeOverride = isAdmin
+        ? { schoolId: scopeSchoolId, gradeId: scopeGradeId, subjectId: scopeSubjectId }
+        : {};
       const res = await fetch(ROUTE_BY_TASK[tab], {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() }),
+        body: JSON.stringify({ prompt: prompt.trim(), ...scopeOverride }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Generation failed");
@@ -79,7 +107,9 @@ export default function DashboardPage() {
     }
   }
 
-  const profileIncomplete = me && (!me.student.school_id || !me.student.grade_id || me.student.subject_ids.length === 0);
+  const profileIncomplete =
+    me && !isAdmin && (!me.student.school_id || !me.student.grade_id || me.student.subject_ids.length === 0);
+  const scopeIncomplete = isAdmin && (!scopeSchoolId || !scopeGradeId || !scopeSubjectId);
 
   return (
     <div className="space-y-6">
@@ -109,6 +139,61 @@ export default function DashboardPage() {
       </div>
 
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+        {isAdmin && (
+          <div className="grid gap-3 border-b border-slate-100 pb-3 sm:grid-cols-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500">School</label>
+              <select
+                value={scopeSchoolId}
+                onChange={(e) => {
+                  setScopeSchoolId(e.target.value);
+                  setScopeGradeId("");
+                  setScopeSubjectId("");
+                }}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                <option value="">Select</option>
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Grade</label>
+              <select
+                value={scopeGradeId}
+                onChange={(e) => setScopeGradeId(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                disabled={!scopeSchoolId}
+              >
+                <option value="">Select</option>
+                {grades.filter((g) => g.school_id === scopeSchoolId).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500">Subject</label>
+              <select
+                value={scopeSubjectId}
+                onChange={(e) => setScopeSubjectId(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                disabled={!scopeSchoolId}
+              >
+                <option value="">Select</option>
+                {subjects.filter((s) => s.school_id === scopeSchoolId).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -118,7 +203,7 @@ export default function DashboardPage() {
         />
         <button
           type="submit"
-          disabled={loading || !!profileIncomplete}
+          disabled={loading || !!profileIncomplete || scopeIncomplete}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {loading ? "Generating..." : "Generate"}
