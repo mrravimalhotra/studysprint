@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 import type { CompletionRequest, CompletionResult, EmbeddingResult, LlmProviderAdapter } from "@/lib/llm/types";
 import { assertHeaderSafe } from "@/lib/llm/assert-header-safe";
+import { withNetworkRetry } from "@/lib/llm/retry";
 
 function client() {
   const apiKey = process.env.GOOGLE_API_KEY;
@@ -28,10 +29,12 @@ export const googleAdapter: LlmProviderAdapter = {
       parts.push({ inlineData: { data: img.data, mimeType: img.mimeType } });
     }
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts }],
-      generationConfig: { temperature: req.temperature ?? 0.4 },
-    });
+    const result = await withNetworkRetry(() =>
+      model.generateContent({
+        contents: [{ role: "user", parts }],
+        generationConfig: { temperature: req.temperature ?? 0.4 },
+      })
+    );
 
     const response = result.response;
     const usage = response.usageMetadata;
@@ -60,16 +63,15 @@ export const googleAdapter: LlmProviderAdapter = {
     // installed @google/generative-ai SDK's embedContent() type doesn't expose
     // outputDimensionality, but gemini-embedding-001 defaults to 3072 dimensions
     // otherwise — this pins it to 768, matching chunks.embedding's vector(768).
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${apiKey}`,
-      {
+    const response = await withNetworkRetry(() =>
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:embedContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: { parts: [{ text }] },
           outputDimensionality: 768,
         }),
-      }
+      })
     );
 
     if (!response.ok) {
