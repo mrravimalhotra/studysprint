@@ -1,9 +1,11 @@
 import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
 import type { CompletionRequest, CompletionResult, EmbeddingResult, LlmProviderAdapter } from "@/lib/llm/types";
+import { assertHeaderSafe } from "@/lib/llm/assert-header-safe";
 
 function client() {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_API_KEY is not configured");
+  assertHeaderSafe("GOOGLE_API_KEY", apiKey);
   return new GoogleGenerativeAI(apiKey);
 }
 

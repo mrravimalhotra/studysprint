@@ -1,9 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { CompletionRequest, CompletionResult, EmbeddingResult, LlmProviderAdapter } from "@/lib/llm/types";
+import { assertHeaderSafe } from "@/lib/llm/assert-header-safe";
 
 function client() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
+  assertHeaderSafe("ANTHROPIC_API_KEY", apiKey);
   return new Anthropic({ apiKey });
 }
 

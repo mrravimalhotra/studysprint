@@ -1,9 +1,11 @@
 import OpenAI from "openai";
 import type { CompletionRequest, CompletionResult, EmbeddingResult, LlmProviderAdapter } from "@/lib/llm/types";
+import { assertHeaderSafe } from "@/lib/llm/assert-header-safe";
 
 function client() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured");
+  assertHeaderSafe("OPENAI_API_KEY", apiKey);
   return new OpenAI({ apiKey });
 }
 
