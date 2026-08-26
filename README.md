@@ -98,11 +98,15 @@ everyone else — no more SQL needed.
 ### 6. Populate the knowledge base
 
 In `/admin/taxonomy`, add at least one school, grade, and subject. Then in
-`/admin/documents`, upload scanned/photographed pages tagged with that
-taxonomy — each page is transcribed via the LLM's native vision input
-(`ocr_extraction` task type, Gemini Flash by default), chunked, embedded, and
-indexed into `pgvector`. Students only retrieve chunks matching their own
-school/grade/subject.
+`/admin/documents`, upload scanned/photographed pages (JPG/PNG) or a PDF —
+PDFs are rasterized into per-page images client-side (`src/lib/pdf-to-images.ts`,
+via `pdfjs-dist`) before upload, so the server only ever handles page images.
+If a batch mixes content types (e.g. a chapter followed by its exercises),
+set the type per page in the thumbnail grid — pages are grouped by contiguous
+type and ingested as separate documents automatically. Each page is
+transcribed via the LLM's native vision input (`ocr_extraction` task type,
+Gemini Flash by default), chunked, embedded, and indexed into `pgvector`.
+Students only retrieve chunks matching their own school/grade/subject.
 
 Every page's original image is also uploaded to R2 (`chunks.image_path`,
 via `src/lib/storage.ts`) and linked to its chunks — not just the OCR'd text.
