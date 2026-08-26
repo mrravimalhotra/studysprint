@@ -55,3 +55,36 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ [body.kind]: data });
 }
+
+interface PatchBody {
+  kind: "school" | "grade" | "subject";
+  id: string;
+  name: string;
+}
+
+const TABLE_BY_KIND = { school: "schools", grade: "grades", subject: "subjects" } as const;
+
+export async function PATCH(request: Request) {
+  try {
+    await requireAdmin();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => null)) as PatchBody | null;
+  if (!body?.kind || !body.id || !body.name?.trim()) {
+    return NextResponse.json({ error: "kind, id, and name are required" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const table = TABLE_BY_KIND[body.kind];
+  const { data, error } = await admin
+    .from(table)
+    .update({ name: body.name.trim() })
+    .eq("id", body.id)
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ [body.kind]: data });
+}

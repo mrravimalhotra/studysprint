@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Grade, School, Subject } from "@/types/database";
+import { EditableName } from "@/components/EditableName";
 
 export default function TaxonomyPage() {
   const [schools, setSchools] = useState<School[]>([]);
@@ -50,6 +51,19 @@ export default function TaxonomyPage() {
     await load();
   }
 
+  async function rename(kind: "school" | "grade" | "subject", id: string, name: string) {
+    const res = await fetch("/api/admin/taxonomy", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, id, name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    if (kind === "school") setSchools((prev) => prev.map((s) => (s.id === id ? data.school : s)));
+    if (kind === "grade") setGrades((prev) => prev.map((g) => (g.id === id ? data.grade : g)));
+    if (kind === "subject") setSubjects((prev) => prev.map((s) => (s.id === id ? data.subject : s)));
+  }
+
   if (loading) return <p className="text-sm text-slate-500">Loading...</p>;
 
   return (
@@ -78,7 +92,9 @@ export default function TaxonomyPage() {
         </form>
         <ul className="mt-3 space-y-1 text-sm text-slate-700">
           {schools.map((s) => (
-            <li key={s.id}>{s.name}</li>
+            <li key={s.id}>
+              <EditableName value={s.name} onSave={(name) => rename("school", s.id, name)} />
+            </li>
           ))}
           {schools.length === 0 && <li className="text-slate-400">No schools yet.</li>}
         </ul>
@@ -123,7 +139,9 @@ export default function TaxonomyPage() {
             </form>
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {grades.filter((g) => g.school_id === selectedSchool).map((g) => (
-                <li key={g.id}>{g.name}</li>
+                <li key={g.id}>
+                  <EditableName value={g.name} onSave={(name) => rename("grade", g.id, name)} />
+                </li>
               ))}
             </ul>
           </div>
@@ -149,7 +167,9 @@ export default function TaxonomyPage() {
             </form>
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {subjects.filter((s) => s.school_id === selectedSchool).map((s) => (
-                <li key={s.id}>{s.name}</li>
+                <li key={s.id}>
+                  <EditableName value={s.name} onSave={(name) => rename("subject", s.id, name)} />
+                </li>
               ))}
             </ul>
           </div>
